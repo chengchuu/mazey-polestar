@@ -24,7 +24,7 @@ npm install mazey-polestar --save
 
 | Dependency | Version  |
 |------------|----------|
-| Node.js    | v14.21.3 |
+| Node.js    | v22.22.2 |
 
 ## License
 
