@@ -30,7 +30,7 @@ const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
 const URL_REGEXP = /https?:\/\/[^\s<>"']+/gi;
 const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z0-9_]+/g;
-const SPECIFIC_CHARACTERS_REGEXP = /[()]+/g;
+const SPECIFIC_CHARACTERS_REGEXP = /[().]+/g;
 
 const state = {
   running: false,
@@ -430,13 +430,13 @@ function createButton (text) {
     button.style.opacity = "1";
   });
   button.addEventListener("mouseleave", () => {
-    button.style.opacity = button === state.stopButton && state.running ? "0.2" : "0.05";
+    button.style.opacity = button === state.stopButton && state.running ? "0.05" : "0.01";
   });
   button.addEventListener("focus", () => {
     button.style.opacity = "1";
   });
   button.addEventListener("blur", () => {
-    button.style.opacity = button === state.stopButton && state.running ? "0.2" : "0.05";
+    button.style.opacity = button === state.stopButton && state.running ? "0.05" : "0.01";
   });
 
   return button;
@@ -634,7 +634,7 @@ function formatApiContent (record) {
     ? normalizeMessageContent(record.content)
     : record.content;
 
-  return `${record.messageTime}\n\n${messageBody}`;
+  return `${record.messageTime}\n${messageBody}`;
 }
 
 function getConfiguredEndpoint () {
