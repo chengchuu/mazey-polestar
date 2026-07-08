@@ -18,6 +18,7 @@ const STORAGE_KEY = "telegram-webhook-processed-hashes-v1";
 const ENDPOINT_STORAGE_KEY = "telegram-webhook-endpoint";
 const API_KEY_STORAGE_KEY = "telegram-webhook-api-key";
 const INSTALL_FLAG = "__TELEGRAM_WEBHOOK_SCRIPT_INSTALLED__";
+const DEBUG_GLOBAL_KEY = "TELEGRAM_WEBHOOK_DEBUG";
 const CONTROL_CONTAINER_ID = "telegram-webhook-controls";
 const MASK_ID = "telegram-webhook-mask";
 const TITLE_PREFIX = "[Telegram Webhook Running]";
@@ -29,6 +30,7 @@ const state = {
   scanning: false,
   runId: 0,
   timerId: null,
+  titleObserver: null,
   originalTitle: document.title,
   processedRecords: [],
   processedHashes: new Set(),
@@ -47,6 +49,78 @@ function logWarn (...args) {
 
 function logError (...args) {
   WebhookCon.error(...args);
+}
+
+function getDebugStateSnapshot () {
+  return {
+    running: state.running,
+    scanning: state.scanning,
+    runId: state.runId,
+    hasTimer: Boolean(state.timerId),
+    hasTitleObserver: Boolean(state.titleObserver),
+    processedRecordCount: state.processedRecords.length,
+    processedHashCount: state.processedHashes.size,
+    endpointConfigured: Boolean(getConfiguredEndpoint()),
+    apiKeyConfigured: Boolean(getConfiguredApiKey()),
+  };
+}
+
+function exposeDebugHelpers () {
+  window[DEBUG_GLOBAL_KEY] = {
+    getProcessedRecords: () => state.processedRecords.map(record => ({ ...record })),
+    getProcessedHashes: () => Array.from(state.processedHashes),
+    getState: getDebugStateSnapshot,
+    reloadProcessedRecords: () => {
+      loadProcessedRecords();
+      return getDebugStateSnapshot();
+    },
+  };
+  logInfo("Exposed webhook debug helpers.", { globalKey: DEBUG_GLOBAL_KEY });
+}
+
+function getTitleWithoutPrefix (title) {
+  return String(title || "").startsWith(TITLE_PREFIX)
+    ? String(title || "").slice(TITLE_PREFIX.length).trim()
+    : String(title || "");
+}
+
+function ensureRunningTitlePrefix () {
+  if (!state.running) return;
+
+  const cleanTitle = getTitleWithoutPrefix(document.title);
+  const prefixedTitle = `${TITLE_PREFIX} ${cleanTitle}`.trim();
+
+  if (document.title !== prefixedTitle) {
+    state.originalTitle = cleanTitle;
+    document.title = prefixedTitle;
+    logInfo("Restored running title prefix.", { title: prefixedTitle });
+  }
+}
+
+function startTitleObserver () {
+  if (state.titleObserver) return;
+
+  const titleElement = document.querySelector("title");
+  if (!titleElement || typeof MutationObserver !== "function") {
+    logWarn("Unable to watch title changes; MutationObserver or title element is unavailable.");
+    return;
+  }
+
+  state.titleObserver = new MutationObserver(ensureRunningTitlePrefix);
+  state.titleObserver.observe(titleElement, {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+  logInfo("Started title observer.");
+}
+
+function stopTitleObserver () {
+  if (!state.titleObserver) return;
+
+  state.titleObserver.disconnect();
+  state.titleObserver = null;
+  logInfo("Stopped title observer.");
 }
 
 function safeJsonParse (value, fallback) {
@@ -337,31 +411,28 @@ function extractMessageBody (contentElement) {
     .trim();
 }
 
-function scopeHasSingleContentElement (scopeElement) {
-  return scopeElement.querySelectorAll(CONFIG.messageContentSelector).length <= 1;
-}
-
-function findMessageTimeElementInScope (scopeElement) {
-  if (!scopeElement || !scopeHasSingleContentElement(scopeElement)) return null;
-
-  return scopeElement.querySelector(CONFIG.messageTimeSelector);
-}
-
 function findRelatedMessageTimeElement (contentElement, containerElement) {
-  const messageRoot = contentElement.closest(".Message.message-list-item");
-  let scopeElement = contentElement;
+  let messageBoxElement = contentElement.parentElement;
 
-  while (scopeElement && scopeElement !== document) {
-    const messageTimeElement = findMessageTimeElementInScope(scopeElement);
-    if (messageTimeElement) return messageTimeElement;
-    if (scopeElement === containerElement || scopeElement === messageRoot) break;
-    scopeElement = scopeElement.parentElement;
+  while (messageBoxElement && containerElement.contains(messageBoxElement)) {
+    const messageTimeElement = messageBoxElement.querySelector(CONFIG.messageTimeSelector);
+
+    if (messageTimeElement) {
+      logInfo("Found message time in containing message box.", {
+        timeSelector: CONFIG.messageTimeSelector,
+      });
+      return messageTimeElement;
+    }
+
+    if (messageBoxElement === containerElement) break;
+    messageBoxElement = messageBoxElement.parentElement;
   }
 
-  return (
-    findMessageTimeElementInScope(messageRoot) ||
-    findMessageTimeElementInScope(containerElement)
-  );
+  logWarn("No containing message box has a matched time element.", {
+    timeSelector: CONFIG.messageTimeSelector,
+    contentElement,
+  });
+  return null;
 }
 
 function extractMessageTime (contentElement, containerElement) {
@@ -677,10 +748,11 @@ function startMonitoring () {
     return;
   }
 
-  state.originalTitle = document.title;
+  state.originalTitle = getTitleWithoutPrefix(document.title);
   state.running = true;
   state.runId += 1;
-  document.title = `${TITLE_PREFIX} ${state.originalTitle}`;
+  ensureRunningTitlePrefix();
+  startTitleObserver();
 
   createMask();
   updateControls();
@@ -710,6 +782,7 @@ function stopMonitoring () {
   }
 
   state.running = false;
+  stopTitleObserver();
   removeMask();
   document.title = state.originalTitle;
   updateControls();
@@ -725,6 +798,7 @@ function install () {
   window[INSTALL_FLAG] = true;
   logInfo("Installing Telegram webhook monitor.");
   loadProcessedRecords();
+  exposeDebugHelpers();
   registerMenuCommands();
   createControls();
   updateControls();
