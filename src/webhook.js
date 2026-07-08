@@ -426,8 +426,8 @@ function extractMessageBody (contentElement) {
   });
 
   clone.querySelectorAll(
-    ".message-signature, .message-views, .message-media-duration, " + //  .message-time, [data-ignore-on-paste=\"true\"] .MessageMeta,
-    ".icon-channelviews, .Reactions",
+    ".message-signature, .message-views, .message-media-duration, .message-reaction, " + //  .message-time, [data-ignore-on-paste=\"true\"] .MessageMeta, , .Reactions
+    ".icon-channelviews",
   ).forEach((metadataElement) => {
     metadataElement.remove();
   });
