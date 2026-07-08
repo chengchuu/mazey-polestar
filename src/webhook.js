@@ -16,6 +16,7 @@ const CONFIG = {
   filterApiMessageBody: true,
   titleCheckMinIntervalMs: 10 * 1000,
   maxStoredHashes: 5000,
+  enableDebug: true,
 };
 
 const STORAGE_KEY = "telegram-webhook-processed-hashes-v1";
@@ -49,7 +50,9 @@ const state = {
 };
 
 function logInfo (...args) {
-  WebhookCon.log(...args);
+  if (CONFIG.enableDebug) {
+    WebhookCon.log(...args);
+  }
 }
 
 function logWarn (...args) {
@@ -62,6 +65,7 @@ function logError (...args) {
 
 function getDebugStateSnapshot () {
   return {
+    enableDebug: CONFIG.enableDebug,
     running: state.running,
     scanning: state.scanning,
     runId: state.runId,
@@ -106,6 +110,23 @@ function exposeDebugHelpers () {
     globalKey: DEBUG_GLOBAL_KEY,
     target: debugTarget === window ? "window" : "unsafeWindow",
   });
+}
+
+function removeDebugHelpers () {
+  const debugTarget = getPageWindow();
+
+  if (debugTarget[DEBUG_GLOBAL_KEY]) {
+    delete debugTarget[DEBUG_GLOBAL_KEY];
+  }
+}
+
+function syncDebugHelpers () {
+  if (CONFIG.enableDebug) {
+    exposeDebugHelpers();
+    return;
+  }
+
+  removeDebugHelpers();
 }
 
 function getTitleWithoutPrefix (title) {
@@ -885,7 +906,7 @@ function install () {
   window[INSTALL_FLAG] = true;
   logInfo("Installing Telegram webhook monitor.");
   loadProcessedRecords();
-  exposeDebugHelpers();
+  syncDebugHelpers();
   registerMenuCommands();
   createControls();
   updateControls();
