@@ -11,7 +11,7 @@ const CONFIG = {
   messageContentSelector: "div.content-inner",
   messageTimeSelector: "span.message-time",
   intervalMs: 60 * 1000,
-  titleCheckMinIntervalMs: 10 * 1000,
+  titleCheckMinIntervalMs: 60 * 1000,
   maxStoredHashes: 5000,
 };
 
