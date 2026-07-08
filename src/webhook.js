@@ -7,7 +7,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
-// @connect      i.mazey.net
+// @connect      bilijili.com
 // ==/UserScript==
 
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest */
