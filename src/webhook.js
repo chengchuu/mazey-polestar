@@ -15,7 +15,6 @@
 const CONFIG = {
   endpoint: "",
   messageContentSelector: "div.message-date-group > div.message-date-group div.content-inner",
-  compatibilityMessageContentSelector: "div.message-date-group div.content-inner",
   messageTimeSelector: ".message-time",
   intervalMs: 60 * 1000,
   maxStoredHashes: 5000,
@@ -23,10 +22,12 @@ const CONFIG = {
 
 const STORAGE_KEY = "telegram-webhook-processed-hashes-v1";
 const ENDPOINT_STORAGE_KEY = "telegram-webhook-endpoint";
+const API_KEY_STORAGE_KEY = "telegram-webhook-api-key";
 const INSTALL_FLAG = "__TELEGRAM_WEBHOOK_SCRIPT_INSTALLED__";
 const CONTROL_CONTAINER_ID = "telegram-webhook-controls";
 const MASK_ID = "telegram-webhook-mask";
 const TITLE_PREFIX = "[Telegram Webhook Running]";
+const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
 
 const state = {
@@ -64,21 +65,32 @@ function safeJsonParse (value, fallback) {
 }
 
 function getStoredValue (key, defaultValue) {
-  if (typeof GM_getValue === "function") {
-    return GM_getValue(key, defaultValue);
-  }
+  try {
+    if (typeof GM_getValue === "function") {
+      return GM_getValue(key, defaultValue);
+    }
 
-  const localValue = window.localStorage.getItem(key);
-  return localValue === null ? defaultValue : localValue;
+    const localValue = window.localStorage.getItem(key);
+    return localValue === null ? defaultValue : localValue;
+  } catch (error) {
+    logError(`Unable to read storage key "${key}".`, error);
+    return defaultValue;
+  }
 }
 
 function setStoredValue (key, value) {
-  if (typeof GM_setValue === "function") {
-    GM_setValue(key, value);
-    return;
-  }
+  try {
+    if (typeof GM_setValue === "function") {
+      GM_setValue(key, value);
+      return true;
+    }
 
-  window.localStorage.setItem(key, value);
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    logError(`Unable to persist storage key "${key}".`, error);
+    return false;
+  }
 }
 
 function loadProcessedRecords () {
@@ -103,7 +115,7 @@ function saveProcessedRecords (records) {
 
   state.processedRecords = limitedRecords;
   state.processedHashes = new Set(limitedRecords.map(record => record.hash));
-  setStoredValue(STORAGE_KEY, JSON.stringify(limitedRecords));
+  return setStoredValue(STORAGE_KEY, JSON.stringify(limitedRecords));
 }
 
 function hasProcessedHash (hash) {
@@ -111,9 +123,9 @@ function hasProcessedHash (hash) {
 }
 
 function recordProcessedHash (hash) {
-  if (hasProcessedHash(hash)) return;
+  if (hasProcessedHash(hash)) return true;
 
-  saveProcessedRecords([
+  return saveProcessedRecords([
     ...state.processedRecords,
     {
       hash,
@@ -281,6 +293,16 @@ function extractMessageRecord (contentElement) {
   };
 }
 
+function createHanRegExp () {
+  try {
+    // eslint-disable-next-line prefer-regex-literals
+    return new RegExp("\\p{Script=Han}+", "gu");
+  } catch (error) {
+    logWarn("Unicode Han matching is not fully supported; using fallback ranges.", error);
+    return /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]+/g;
+  }
+}
+
 function createEmojiSequenceRegExp () {
   try {
     return new RegExp(
@@ -300,7 +322,7 @@ function normalizeMessageContent (content) {
   let normalizedContent = String(content || "").normalize("NFKC");
 
   normalizedContent = normalizedContent.replace(/\s+/g, "");
-  normalizedContent = normalizedContent.replace(/\p{Script=Han}+/gu, "#");
+  normalizedContent = normalizedContent.replace(HAN_REGEXP, "#");
   normalizedContent = normalizedContent.replace(EMOJI_SEQUENCE_REGEXP, "#");
   normalizedContent = normalizedContent.replace(/#+/g, "#");
 
@@ -330,6 +352,41 @@ function getConfiguredEndpoint () {
   return String(CONFIG.endpoint || storedEndpoint || "").trim();
 }
 
+function getConfiguredApiKey () {
+  return String(getStoredValue(API_KEY_STORAGE_KEY, "") || "").trim();
+}
+
+function parseResponseBody (responseText) {
+  if (!responseText) return null;
+
+  try {
+    return JSON.parse(responseText);
+  } catch (error) {
+    return responseText;
+  }
+}
+
+function getWebhookHeaders () {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  const apiKey = getConfiguredApiKey();
+
+  if (apiKey) {
+    headers["X-Webhook-API-Key"] = apiKey;
+  }
+
+  return headers;
+}
+
+function getResponseMessage (responseData, responseText) {
+  if (responseData && typeof responseData === "object" && responseData.message) {
+    return responseData.message;
+  }
+
+  return responseText;
+}
+
 function sendWebhookMessage (content) {
   const endpoint = getConfiguredEndpoint();
 
@@ -344,27 +401,16 @@ function sendWebhookMessage (content) {
       GM_xmlhttpRequest({
         method: "POST",
         url: endpoint,
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getWebhookHeaders(),
         data: requestBody,
         timeout: 30000,
         onload: (response) => {
           const responseText = response.responseText || "";
-          let responseData = null;
-
-          if (responseText) {
-            try {
-              responseData = JSON.parse(responseText);
-            } catch (error) {
-              reject(new Error(`Invalid JSON response from webhook API: ${error.message}`));
-              return;
-            }
-          }
+          const responseData = parseResponseBody(responseText);
 
           if (response.status < 200 || response.status >= 300) {
             reject(new Error(
-              `Webhook API returned HTTP ${response.status}: ${(responseData && responseData.message) || responseText}`,
+              `Webhook API returned HTTP ${response.status}: ${getResponseMessage(responseData, responseText)}`,
             ));
             return;
           }
@@ -383,25 +429,15 @@ function sendWebhookMessage (content) {
 
   return fetch(endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: getWebhookHeaders(),
     body: requestBody,
   }).then(async response => {
     const responseText = await response.text();
-    let responseData = null;
-
-    if (responseText) {
-      try {
-        responseData = JSON.parse(responseText);
-      } catch (error) {
-        throw new Error(`Invalid JSON response from webhook API: ${error.message}`);
-      }
-    }
+    const responseData = parseResponseBody(responseText);
 
     if (!response.ok) {
       throw new Error(
-        `Webhook API returned HTTP ${response.status}: ${(responseData && responseData.message) || responseText}`,
+        `Webhook API returned HTTP ${response.status}: ${getResponseMessage(responseData, responseText)}`,
       );
     }
 
@@ -410,18 +446,7 @@ function sendWebhookMessage (content) {
 }
 
 function getMessageContentElements () {
-  const contentElements = Array.from(document.querySelectorAll(CONFIG.messageContentSelector));
-  if (contentElements.length > 0) return contentElements;
-
-  const compatibilityElements = Array.from(document.querySelectorAll(CONFIG.compatibilityMessageContentSelector));
-  if (compatibilityElements.length > 0) {
-    logWarn(
-      "Required Telegram selector matched no messages; using date-group compatibility fallback.",
-      CONFIG.messageContentSelector,
-    );
-  }
-
-  return compatibilityElements;
+  return Array.from(document.querySelectorAll(CONFIG.messageContentSelector));
 }
 
 async function scanAndSendMessages () {
@@ -441,6 +466,11 @@ async function scanAndSendMessages () {
       if (!record) continue;
 
       const normalizedContent = normalizeMessageContent(record.content);
+      if (!normalizedContent) {
+        logWarn("Skipping message with empty normalized content.", contentElement);
+        continue;
+      }
+
       const hash = await hashContent(normalizedContent);
       if (!state.running || state.runId !== scanRunId) break;
       if (!hash || hasProcessedHash(hash)) continue;
@@ -449,12 +479,19 @@ async function scanAndSendMessages () {
 
       try {
         await sendWebhookMessage(apiContent);
-        if (!state.running || state.runId !== scanRunId) break;
-        recordProcessedHash(hash);
-        logInfo("Delivered new Telegram message.", { messageTime: record.messageTime, hash });
       } catch (error) {
         logError("Failed to deliver Telegram message; it will be retried later.", error);
+        continue;
       }
+
+      const isPersisted = recordProcessedHash(hash);
+      logInfo("Delivered new Telegram message.", { messageTime: record.messageTime, hash });
+
+      if (!isPersisted) {
+        logError("Message was delivered, but its hash could not be persisted.", { hash });
+      }
+
+      if (!state.running || state.runId !== scanRunId) break;
     }
   } finally {
     state.scanning = false;
