@@ -7,8 +7,8 @@ const WebhookCon = genCustomConsole("[Webhook]");
 
 const CONFIG = {
   endpoint: "",
-  messageContainerSelector: "div.messages-container > div.message-date-group",
-  messageContentSelector: "div.content-inner",
+  messageContainerSelector: "div.messages-container > div.text-content",
+  messageContentSelector: "div.text-content", // deprecated, kept for backward compatibility
   messageTimeSelector: "span.message-time",
   intervalMs: 60 * 1000,
   enableTitleObserver: false,
@@ -710,13 +710,7 @@ function getMessageContentEntries () {
   }
 
   return containerElements.flatMap(containerElement => {
-    const contentElements = Array.from(containerElement.querySelectorAll(CONFIG.messageContentSelector));
     const timeElements = Array.from(containerElement.querySelectorAll(CONFIG.messageTimeSelector));
-
-    if (contentElements.length !== 1) {
-      logWarn("Message container has no matched content elements.", contentElements);
-      return [];
-    }
 
     if (timeElements.length !== 1) {
       logWarn("Message container has no matched time elements.", timeElements);
@@ -724,8 +718,7 @@ function getMessageContentEntries () {
     }
 
     return [{
-      containerElement,
-      contentElement: contentElements[0],
+      contentElement: containerElement,
       timeElement: timeElements[0],
     }];
   });
@@ -751,8 +744,8 @@ async function scanAndSendMessages () {
     logInfo("Scanning Telegram message candidates.", {
       count: messageEntries.length,
       containerSelector: CONFIG.messageContainerSelector,
-      contentSelector: CONFIG.messageContentSelector,
       timeSelector: CONFIG.messageTimeSelector,
+      messageEntries,
     });
 
     for (const { contentElement, timeElement } of messageEntries) {
