@@ -7,7 +7,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
-// @connect      TARGET_API_HOST
+// @connect      i.mazey.net
 // ==/UserScript==
 
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest */

@@ -18,7 +18,7 @@ const userscriptHeaders = {
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
-// @connect      TARGET_API_HOST
+// @connect      i.mazey.net
 // ==/UserScript==`,
 };
 
