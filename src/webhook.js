@@ -24,7 +24,7 @@ const INSTALL_FLAG = "__TELEGRAM_WEBHOOK_SCRIPT_INSTALLED__";
 const DEBUG_GLOBAL_KEY = "TELEGRAM_WEBHOOK_DEBUG";
 const CONTROL_CONTAINER_ID = "telegram-webhook-controls";
 const MASK_ID = "telegram-webhook-mask";
-const TITLE_PREFIX = "[Telegram Webhook Running]";
+const TITLE_PREFIX = "[Webhook Running]";
 const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
 const URL_REGEXP = /https?:\/\/[^\s<>"']+/gi;
@@ -427,7 +427,7 @@ function updateControls () {
   state.startButton.disabled = state.running;
   state.stopButton.style.display = state.running ? "inline-flex" : "none";
   state.stopButton.disabled = !state.running;
-  state.stopButton.style.opacity = state.running ? "0.2" : "0.05";
+  state.stopButton.style.opacity = state.running ? "0.05" : "0.01";
 }
 
 function createMask () {
@@ -451,7 +451,7 @@ function createMask () {
   mask.style.color = "rgba(255, 255, 255, 0.9)";
   mask.style.font = "14px Arial, sans-serif";
   mask.style.textShadow = "0 1px 2px rgba(0, 0, 0, 0.8)";
-  mask.textContent = "Telegram webhook monitor running";
+  mask.textContent = "Webhook Monitor Running";
 
   document.body.appendChild(mask);
   logInfo("Created webhook running mask.");
