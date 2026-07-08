@@ -15,9 +15,13 @@
 
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand */
 
+import { genCustomConsole } from "mazey";
+
+const WebhookCon = genCustomConsole("[Webhook]");
+
 const CONFIG = {
   endpoint: "",
-  messageContentSelector: "div.message-date-group > div.message-date-group div.content-inner",
+  messageContentSelector: "div.messages-container > div.message-date-group div.content-inner",
   messageTimeSelector: ".message-time",
   intervalMs: 60 * 1000,
   maxStoredHashes: 5000,
@@ -47,15 +51,15 @@ const state = {
 };
 
 function logInfo (...args) {
-  console.log("[Telegram Webhook]", ...args);
+  WebhookCon.log(...args);
 }
 
 function logWarn (...args) {
-  console.warn("[Telegram Webhook]", ...args);
+  WebhookCon.warn(...args);
 }
 
 function logError (...args) {
-  console.error("[Telegram Webhook]", ...args);
+  WebhookCon.error(...args);
 }
 
 function safeJsonParse (value, fallback) {

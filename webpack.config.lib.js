@@ -40,7 +40,7 @@ const config = {
     [ENTRY]: ENTRY_FILE,
   },
   output: {
-    filename: ENTRY === "webhook" ? "[name].user.js" : "[name].js",
+    filename: userscriptHeaders[ENTRY] ? "[name].user.js" : "[name].js",
     path: path.resolve(__dirname, "lib"),
   },
   module: {
@@ -55,7 +55,7 @@ const config = {
   plugins,
 };
 
-if (ENTRY === "webhook") {
+if (userscriptHeaders[ENTRY]) {
   config.optimization = {
     minimize: false,
   };
