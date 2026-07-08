@@ -12,9 +12,7 @@ const CONFIG = {
   messageTimeSelector: "span.message-time",
   messageListScrollSelector: "div.MessageList.custom-scroll",
   intervalMs: 60 * 1000,
-  enableTitleObserver: false,
   filterApiMessageBody: true,
-  titleCheckMinIntervalMs: 10 * 1000,
   maxStoredHashes: 5000,
   enableDebug: true,
 };
@@ -38,9 +36,6 @@ const state = {
   scanning: false,
   runId: 0,
   timerId: null,
-  titleObserver: null,
-  titleCheckTimerId: null,
-  lastTitleCheckAt: 0,
   originalTitle: document.title,
   processedRecords: [],
   processedHashes: new Set(),
@@ -70,12 +65,7 @@ function getDebugStateSnapshot () {
     scanning: state.scanning,
     runId: state.runId,
     hasTimer: Boolean(state.timerId),
-    hasTitleObserver: Boolean(state.titleObserver),
-    hasTitleCheckTimer: Boolean(state.titleCheckTimerId),
-    enableTitleObserver: CONFIG.enableTitleObserver,
     filterApiMessageBody: CONFIG.filterApiMessageBody,
-    lastTitleCheckAt: state.lastTitleCheckAt,
-    titleCheckMinIntervalMs: CONFIG.titleCheckMinIntervalMs,
     processedRecordCount: state.processedRecords.length,
     processedHashCount: state.processedHashes.size,
     endpointConfigured: Boolean(getConfiguredEndpoint()),
@@ -138,77 +128,14 @@ function getTitleWithoutPrefix (title) {
 function ensureRunningTitlePrefix () {
   if (!state.running) return;
 
-  state.lastTitleCheckAt = Date.now();
-
   const cleanTitle = getTitleWithoutPrefix(document.title);
   const prefixedTitle = `${TITLE_PREFIX} ${cleanTitle}`.trim();
 
   if (document.title !== prefixedTitle) {
     state.originalTitle = cleanTitle;
     document.title = prefixedTitle;
-    logInfo("Restored running title prefix.", { title: prefixedTitle });
+    logInfo("Applied running title prefix.", { title: prefixedTitle });
   }
-}
-
-function clearTitleCheckTimer () {
-  if (!state.titleCheckTimerId) return;
-
-  window.clearTimeout(state.titleCheckTimerId);
-  state.titleCheckTimerId = null;
-}
-
-function scheduleTitlePrefixCheck () {
-  if (!state.running) return;
-
-  const elapsedMs = Date.now() - state.lastTitleCheckAt;
-  const waitMs = Math.max(CONFIG.titleCheckMinIntervalMs - elapsedMs, 0);
-
-  if (waitMs === 0) {
-    clearTitleCheckTimer();
-    ensureRunningTitlePrefix();
-    return;
-  }
-
-  if (state.titleCheckTimerId) return;
-
-  state.titleCheckTimerId = window.setTimeout(() => {
-    state.titleCheckTimerId = null;
-    ensureRunningTitlePrefix();
-  }, waitMs);
-}
-
-function startTitleObserver () {
-  if (!CONFIG.enableTitleObserver) {
-    logInfo("Title observer is disabled by config.");
-    return;
-  }
-
-  if (state.titleObserver) return;
-
-  const titleElement = document.querySelector("title");
-  if (!titleElement || typeof MutationObserver !== "function") {
-    logWarn("Unable to watch title changes; MutationObserver or title element is unavailable.");
-    return;
-  }
-
-  state.titleObserver = new MutationObserver(scheduleTitlePrefixCheck);
-  state.titleObserver.observe(titleElement, {
-    childList: true,
-    characterData: true,
-    subtree: true,
-  });
-  logInfo("Started title observer.");
-}
-
-function stopTitleObserver () {
-  clearTitleCheckTimer();
-  state.lastTitleCheckAt = 0;
-
-  if (!state.titleObserver) return;
-
-  state.titleObserver.disconnect();
-  state.titleObserver = null;
-  logInfo("Stopped title observer.");
 }
 
 function safeJsonParse (value, fallback) {
@@ -860,7 +787,6 @@ function startMonitoring () {
   state.running = true;
   state.runId += 1;
   ensureRunningTitlePrefix();
-  startTitleObserver();
 
   createMask();
   updateControls();
@@ -890,7 +816,6 @@ function stopMonitoring () {
   }
 
   state.running = false;
-  stopTitleObserver();
   removeMask();
   document.title = state.originalTitle;
   updateControls();
