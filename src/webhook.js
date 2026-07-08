@@ -1,4 +1,4 @@
-/* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand */
+/* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand, unsafeWindow */
 /* eslint max-lines: off */
 
 import { genCustomConsole } from "mazey";
@@ -71,8 +71,18 @@ function getDebugStateSnapshot () {
   };
 }
 
+function getPageWindow () {
+  if (typeof unsafeWindow === "object" && unsafeWindow) {
+    return unsafeWindow;
+  }
+
+  return window;
+}
+
 function exposeDebugHelpers () {
-  window[DEBUG_GLOBAL_KEY] = {
+  const debugTarget = getPageWindow();
+
+  debugTarget[DEBUG_GLOBAL_KEY] = {
     getProcessedRecords: () => state.processedRecords.map(record => ({ ...record })),
     getProcessedHashes: () => Array.from(state.processedHashes),
     getState: getDebugStateSnapshot,
@@ -81,7 +91,11 @@ function exposeDebugHelpers () {
       return getDebugStateSnapshot();
     },
   };
-  logInfo("Exposed webhook debug helpers.", { globalKey: DEBUG_GLOBAL_KEY });
+
+  logInfo("Exposed webhook debug helpers.", {
+    globalKey: DEBUG_GLOBAL_KEY,
+    target: debugTarget === window ? "window" : "unsafeWindow",
+  });
 }
 
 function getTitleWithoutPrefix (title) {
