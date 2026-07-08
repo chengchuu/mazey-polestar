@@ -11,6 +11,7 @@ const CONFIG = {
   messageContentSelector: "div.content-inner",
   messageTimeSelector: "span.message-time",
   intervalMs: 60 * 1000,
+  titleCheckMinIntervalMs: 10 * 1000,
   maxStoredHashes: 5000,
 };
 
@@ -31,6 +32,8 @@ const state = {
   runId: 0,
   timerId: null,
   titleObserver: null,
+  titleCheckTimerId: null,
+  lastTitleCheckAt: 0,
   originalTitle: document.title,
   processedRecords: [],
   processedHashes: new Set(),
@@ -58,6 +61,9 @@ function getDebugStateSnapshot () {
     runId: state.runId,
     hasTimer: Boolean(state.timerId),
     hasTitleObserver: Boolean(state.titleObserver),
+    hasTitleCheckTimer: Boolean(state.titleCheckTimerId),
+    lastTitleCheckAt: state.lastTitleCheckAt,
+    titleCheckMinIntervalMs: CONFIG.titleCheckMinIntervalMs,
     processedRecordCount: state.processedRecords.length,
     processedHashCount: state.processedHashes.size,
     endpointConfigured: Boolean(getConfiguredEndpoint()),
@@ -87,6 +93,8 @@ function getTitleWithoutPrefix (title) {
 function ensureRunningTitlePrefix () {
   if (!state.running) return;
 
+  state.lastTitleCheckAt = Date.now();
+
   const cleanTitle = getTitleWithoutPrefix(document.title);
   const prefixedTitle = `${TITLE_PREFIX} ${cleanTitle}`.trim();
 
@@ -95,6 +103,33 @@ function ensureRunningTitlePrefix () {
     document.title = prefixedTitle;
     logInfo("Restored running title prefix.", { title: prefixedTitle });
   }
+}
+
+function clearTitleCheckTimer () {
+  if (!state.titleCheckTimerId) return;
+
+  window.clearTimeout(state.titleCheckTimerId);
+  state.titleCheckTimerId = null;
+}
+
+function scheduleTitlePrefixCheck () {
+  if (!state.running) return;
+
+  const elapsedMs = Date.now() - state.lastTitleCheckAt;
+  const waitMs = Math.max(CONFIG.titleCheckMinIntervalMs - elapsedMs, 0);
+
+  if (waitMs === 0) {
+    clearTitleCheckTimer();
+    ensureRunningTitlePrefix();
+    return;
+  }
+
+  if (state.titleCheckTimerId) return;
+
+  state.titleCheckTimerId = window.setTimeout(() => {
+    state.titleCheckTimerId = null;
+    ensureRunningTitlePrefix();
+  }, waitMs);
 }
 
 function startTitleObserver () {
@@ -106,7 +141,7 @@ function startTitleObserver () {
     return;
   }
 
-  state.titleObserver = new MutationObserver(ensureRunningTitlePrefix);
+  state.titleObserver = new MutationObserver(scheduleTitlePrefixCheck);
   state.titleObserver.observe(titleElement, {
     childList: true,
     characterData: true,
@@ -116,6 +151,9 @@ function startTitleObserver () {
 }
 
 function stopTitleObserver () {
+  clearTitleCheckTimer();
+  state.lastTitleCheckAt = 0;
+
   if (!state.titleObserver) return;
 
   state.titleObserver.disconnect();
