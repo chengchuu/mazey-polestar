@@ -22,8 +22,9 @@ const WebhookCon = genCustomConsole("[Webhook]");
 
 const CONFIG = {
   endpoint: "",
-  messageContentSelector: "div.messages-container > div.message-date-group div.content-inner",
-  messageTimeSelector: ".message-time",
+  messageContainerSelector: "div.messages-container > div.message-date-group",
+  messageContentSelector: "div.content-inner",
+  messageTimeSelector: "span.message-time",
   intervalMs: 60 * 1000,
   maxStoredHashes: 5000,
 };
