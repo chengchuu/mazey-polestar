@@ -12,6 +12,7 @@
     "build:cdn": "cross-env ENTRY=cdn webpack --config webpack.config.prd.js",
     "build:obfuscator": "cross-env ENTRY=obfuscator webpack --config webpack.config.prd.js",
     "build:addstyle": "cross-env ENTRY=addstyle webpack --mode=production --config webpack.config.lib.js",
+    "build:webhook": "cross-env ENTRY=webhook webpack --mode=production --config webpack.config.lib.js",
     "watch:confluence": "cross-env ENTRY=confluence webpack watch --mode=development --config webpack.config.lib.js",
     "build:confluence": "cross-env ENTRY=confluence webpack --mode=production --config webpack.config.lib.js",
     "build:list": "cross-env ENTRY=list webpack --mode=production --config webpack.config.lib.js",
