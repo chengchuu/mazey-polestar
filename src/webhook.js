@@ -1,18 +1,3 @@
-// ==UserScript==
-// @name         Telegram Webhook Monitor
-// @namespace    https://github.com/chengchuu/webpack-build-demo
-// @version      0.1.0
-// @description  Scan Telegram Web messages and send new readable messages to a webhook relay.
-// @match        https://web.telegram.org/*
-// @updateURL    https://raw.githubusercontent.com/chengchuu/webpack-build-demo/preview/lib/webhook.user.js
-// @downloadURL  https://raw.githubusercontent.com/chengchuu/webpack-build-demo/preview/lib/webhook.user.js
-// @grant        GM_getValue
-// @grant        GM_setValue
-// @grant        GM_xmlhttpRequest
-// @grant        GM_registerMenuCommand
-// @connect      *
-// ==/UserScript==
-
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand */
 /* eslint max-lines: off */
 
@@ -352,11 +337,35 @@ function extractMessageBody (contentElement) {
     .trim();
 }
 
-function extractMessageTime (contentElement) {
+function scopeHasSingleContentElement (scopeElement) {
+  return scopeElement.querySelectorAll(CONFIG.messageContentSelector).length <= 1;
+}
+
+function findMessageTimeElementInScope (scopeElement) {
+  if (!scopeElement || !scopeHasSingleContentElement(scopeElement)) return null;
+
+  return scopeElement.querySelector(CONFIG.messageTimeSelector);
+}
+
+function findRelatedMessageTimeElement (contentElement, containerElement) {
   const messageRoot = contentElement.closest(".Message.message-list-item");
-  const messageTimeElement =
-    contentElement.querySelector(CONFIG.messageTimeSelector) ||
-    (messageRoot && messageRoot.querySelector(CONFIG.messageTimeSelector));
+  let scopeElement = contentElement;
+
+  while (scopeElement && scopeElement !== document) {
+    const messageTimeElement = findMessageTimeElementInScope(scopeElement);
+    if (messageTimeElement) return messageTimeElement;
+    if (scopeElement === containerElement || scopeElement === messageRoot) break;
+    scopeElement = scopeElement.parentElement;
+  }
+
+  return (
+    findMessageTimeElementInScope(messageRoot) ||
+    findMessageTimeElementInScope(containerElement)
+  );
+}
+
+function extractMessageTime (contentElement, containerElement) {
+  const messageTimeElement = findRelatedMessageTimeElement(contentElement, containerElement);
   const messageTime = messageTimeElement && messageTimeElement.getAttribute("title")
     ? messageTimeElement.getAttribute("title").trim()
     : "";
@@ -368,9 +377,9 @@ function extractMessageTime (contentElement) {
   return messageTime;
 }
 
-function extractMessageRecord (contentElement) {
+function extractMessageRecord (contentElement, containerElement) {
   const content = extractMessageBody(contentElement);
-  const messageTime = extractMessageTime(contentElement);
+  const messageTime = extractMessageTime(contentElement, containerElement);
 
   if (!content || !messageTime) {
     if (!content) logWarn("Skipping message without readable content.", contentElement);
@@ -559,8 +568,26 @@ function sendWebhookMessage (content) {
   });
 }
 
-function getMessageContentElements () {
-  return Array.from(document.querySelectorAll(CONFIG.messageContentSelector));
+function getMessageContentEntries () {
+  const containerElements = Array.from(document.querySelectorAll(CONFIG.messageContainerSelector));
+
+  if (!containerElements.length) {
+    logWarn("No Telegram message containers matched selector.", CONFIG.messageContainerSelector);
+    return [];
+  }
+
+  return containerElements.flatMap(containerElement => {
+    const contentElements = Array.from(containerElement.querySelectorAll(CONFIG.messageContentSelector));
+
+    if (!contentElements.length) {
+      logWarn("Message container has no matched content elements.", containerElement);
+    }
+
+    return contentElements.map(contentElement => ({
+      containerElement,
+      contentElement,
+    }));
+  });
 }
 
 async function scanAndSendMessages () {
@@ -579,16 +606,21 @@ async function scanAndSendMessages () {
   logInfo("Started scan.", { runId: scanRunId });
 
   try {
-    const contentElements = getMessageContentElements();
-    logInfo(`Scanning ${contentElements.length} Telegram message candidates.`);
+    const messageEntries = getMessageContentEntries();
+    logInfo("Scanning Telegram message candidates.", {
+      count: messageEntries.length,
+      containerSelector: CONFIG.messageContainerSelector,
+      contentSelector: CONFIG.messageContentSelector,
+      timeSelector: CONFIG.messageTimeSelector,
+    });
 
-    for (const contentElement of contentElements) {
+    for (const { contentElement, containerElement } of messageEntries) {
       if (!state.running || state.runId !== scanRunId) {
         logInfo("Stopping scan because monitoring state changed.", { runId: scanRunId, currentRunId: state.runId });
         break;
       }
 
-      const record = extractMessageRecord(contentElement);
+      const record = extractMessageRecord(contentElement, containerElement);
       if (!record) continue;
 
       const normalizedContent = normalizeMessageContent(record.content);
