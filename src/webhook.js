@@ -449,46 +449,22 @@ function extractMessageBody (contentElement) {
     .trim();
 }
 
-function findRelatedMessageTimeElement (contentElement, containerElement) {
-  let messageBoxElement = contentElement.parentElement;
-
-  while (messageBoxElement && containerElement.contains(messageBoxElement)) {
-    const messageTimeElement = messageBoxElement.querySelector(CONFIG.messageTimeSelector);
-
-    if (messageTimeElement) {
-      logInfo("Found message time in containing message box.", {
-        timeSelector: CONFIG.messageTimeSelector,
-      });
-      return messageTimeElement;
-    }
-
-    if (messageBoxElement === containerElement) break;
-    messageBoxElement = messageBoxElement.parentElement;
-  }
-
-  logWarn("No containing message box has a matched time element.", {
-    timeSelector: CONFIG.messageTimeSelector,
-    contentElement,
-  });
-  return null;
-}
-
-function extractMessageTime (contentElement, containerElement) {
-  const messageTimeElement = findRelatedMessageTimeElement(contentElement, containerElement);
+function extractMessageTime (timeElement) {
+  const messageTimeElement = timeElement;
   const messageTime = messageTimeElement && messageTimeElement.getAttribute("title")
     ? messageTimeElement.getAttribute("title").trim()
     : "";
 
   if (!messageTime) {
-    logWarn("Skipping message without a full .message-time title timestamp.", contentElement);
+    logWarn("Skipping message without a full .message-time title timestamp.", timeElement);
   }
 
   return messageTime;
 }
 
-function extractMessageRecord (contentElement, containerElement) {
+function extractMessageRecord (contentElement, timeElement) {
   const content = extractMessageBody(contentElement);
-  const messageTime = extractMessageTime(contentElement, containerElement);
+  const messageTime = extractMessageTime(timeElement);
 
   if (!content || !messageTime) {
     if (!content) logWarn("Skipping message without readable content.", contentElement);
@@ -687,15 +663,23 @@ function getMessageContentEntries () {
 
   return containerElements.flatMap(containerElement => {
     const contentElements = Array.from(containerElement.querySelectorAll(CONFIG.messageContentSelector));
+    const timeElements = Array.from(containerElement.querySelectorAll(CONFIG.messageTimeSelector));
 
-    if (!contentElements.length) {
+    if (contentElements.length !== 1) {
       logWarn("Message container has no matched content elements.", containerElement);
+      return [];
     }
 
-    return contentElements.map(contentElement => ({
+    if (timeElements.length !== 1) {
+      logWarn("Message container has no matched time elements.", containerElement);
+      return [];
+    }
+
+    return [{
       containerElement,
-      contentElement,
-    }));
+      contentElement: contentElements[0],
+      timeElement: timeElements[0],
+    }];
   });
 }
 
@@ -723,13 +707,13 @@ async function scanAndSendMessages () {
       timeSelector: CONFIG.messageTimeSelector,
     });
 
-    for (const { contentElement, containerElement } of messageEntries) {
+    for (const { contentElement, timeElement, containerElement } of messageEntries) {
       if (!state.running || state.runId !== scanRunId) {
         logInfo("Stopping scan because monitoring state changed.", { runId: scanRunId, currentRunId: state.runId });
         break;
       }
 
-      const record = extractMessageRecord(contentElement, containerElement);
+      const record = extractMessageRecord(contentElement, timeElement);
       if (!record) continue;
 
       const normalizedContent = normalizeMessageContent(record.content);
