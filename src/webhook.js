@@ -1,5 +1,5 @@
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand, unsafeWindow */
-/* eslint max-lines: off */
+/* eslint-disable max-lines, max-len */
 
 import { genCustomConsole } from "mazey";
 
@@ -27,9 +27,9 @@ const MASK_ID = "telegram-webhook-mask";
 const TITLE_PREFIX = "[Webhook Running]";
 const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
-const URL_REGEXP = /https?:\/\/[^\s<>"']+/gi;
-const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z0-9_]+/g;
-const SPECIFIC_CHARACTERS_REGEXP = /[().]+/g;
+const URL_REGEXP = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9\u4E00-\u9FA5()!@:%_+.~#?&//=]*)/g;
+const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z_]+/g;
+const SPECIFIC_CHARACTERS_REGEXP = /[()]+/g;
 
 const state = {
   running: false,
@@ -773,7 +773,7 @@ async function scanAndSendMessages () {
       }
       if (!hash) continue;
       if (hasProcessedHash(hash)) {
-        logInfo("Skipping already processed message hash.", { hash });
+        // logInfo("Skipping already processed message hash.", { hash });
         continue;
       }
 
