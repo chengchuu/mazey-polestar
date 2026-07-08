@@ -29,7 +29,7 @@ const TITLE_PREFIX = "[Webhook Running]";
 const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
 const URL_REGEXP = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9\u4E00-\u9FA5()!@:%_+.~#?&//=]*)/g;
-const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z_]+/g;
+const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z]+/g;
 const SPECIFIC_CHARACTERS_REGEXP = /[()]+/g;
 
 const state = {
@@ -470,17 +470,22 @@ function removeMask () {
 function extractMessageBody (contentElement) {
   const clone = contentElement.cloneNode(true);
 
+  // logInfo("Extracted message body HTML - innerHTML", clone.innerHTML);
+
   clone.querySelectorAll("img.emoji[alt]").forEach((emojiElement) => {
     const emojiText = emojiElement.getAttribute("alt") || "";
     emojiElement.replaceWith(document.createTextNode(emojiText));
   });
 
   clone.querySelectorAll(
-    ".MessageMeta, .message-time, .message-views, .message-media-duration, " +
-    "[data-ignore-on-paste=\"true\"], .icon-channelviews",
+    ".message-signature, .message-views, .message-media-duration, " + //  .message-time, [data-ignore-on-paste=\"true\"] .MessageMeta,
+    ".icon-channelviews, .Reactions",
   ).forEach((metadataElement) => {
     metadataElement.remove();
   });
+
+  // logInfo("Extracted message body text - innerText", clone.innerText);
+  // logInfo("Extracted message body text - textContent", clone.textContent);
 
   return (clone.innerText || clone.textContent || "")
     .replace(/\u00a0/g, " ")
@@ -550,9 +555,9 @@ function normalizeMessageContent (content) {
   normalizedContent = normalizedContent.replace(URL_REGEXP, "#");
   normalizedContent = normalizedContent.replace(USERNAME_REGEXP, "$1#");
   normalizedContent = normalizedContent.replace(SPECIFIC_CHARACTERS_REGEXP, "#");
-  normalizedContent = normalizedContent.replace(/\s+/g, "#");
   normalizedContent = normalizedContent.replace(HAN_REGEXP, "#");
   normalizedContent = normalizedContent.replace(EMOJI_SEQUENCE_REGEXP, "#");
+  normalizedContent = normalizedContent.replace(/\s+/g, "#");
   normalizedContent = normalizedContent.replace(/#+/g, "#");
 
   return normalizedContent.trim();
@@ -573,7 +578,7 @@ async function hashContent (content) {
 }
 
 function formatApiContent (record) {
-  logInfo("Original message content:", { messageTime: record.messageTime, content: record.content });
+  logInfo("Original message content:", record.content);
   const messageBody = CONFIG.filterApiMessageBody
     ? normalizeMessageContent(record.content)
     : record.content;
@@ -758,8 +763,6 @@ async function scanAndSendMessages () {
   logInfo("Started scan.", { runId: scanRunId });
 
   try {
-    scrollMessageListToBottom();
-
     const messageEntries = getMessageContentEntries();
     logInfo("Scanning Telegram message candidates.", {
       count: messageEntries.length,
@@ -822,6 +825,7 @@ async function scanAndSendMessages () {
       logInfo("Scheduling follow-up scan for newer run.", { runId: state.runId });
       window.setTimeout(scanAndSendMessages, 0);
     }
+    scrollMessageListToBottom();
   }
 }
 
