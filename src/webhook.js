@@ -14,6 +14,7 @@
 // ==/UserScript==
 
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand */
+/* eslint max-lines: off */
 
 import { genCustomConsole } from "mazey";
 
@@ -100,6 +101,14 @@ function setStoredValue (key, value) {
   }
 }
 
+function getEndpointLogLabel (endpoint) {
+  try {
+    return new URL(endpoint).origin;
+  } catch (error) {
+    return "(invalid endpoint URL)";
+  }
+}
+
 function setEndpointFromMenu () {
   const currentEndpoint = getConfiguredEndpoint();
   const nextEndpoint = window.prompt(
@@ -123,6 +132,7 @@ function setEndpointFromMenu () {
   }
 
   if (setStoredValue(ENDPOINT_STORAGE_KEY, endpoint)) {
+    logInfo("Webhook endpoint saved from menu.", { endpoint: getEndpointLogLabel(endpoint) });
     window.alert("Webhook endpoint saved.");
   }
 }
@@ -136,6 +146,7 @@ function setApiKeyFromMenu () {
 
   const apiKey = nextApiKey.trim();
   if (setStoredValue(API_KEY_STORAGE_KEY, apiKey)) {
+    logInfo(apiKey ? "Webhook API key saved from menu." : "Webhook API key removed from menu.");
     window.alert(apiKey ? "Webhook API key saved." : "Webhook API key removed.");
   }
 }
@@ -148,11 +159,15 @@ function showConfigFromMenu () {
 }
 
 function registerMenuCommands () {
-  if (typeof GM_registerMenuCommand !== "function") return;
+  if (typeof GM_registerMenuCommand !== "function") {
+    logWarn("GM_registerMenuCommand is unavailable; configuration menu was not registered.");
+    return;
+  }
 
   GM_registerMenuCommand("Set webhook endpoint", setEndpointFromMenu);
   GM_registerMenuCommand("Set webhook API key", setApiKeyFromMenu);
   GM_registerMenuCommand("Show webhook configuration", showConfigFromMenu);
+  logInfo("Registered Tampermonkey menu commands.");
 }
 
 function loadProcessedRecords () {
@@ -167,6 +182,7 @@ function loadProcessedRecords () {
   state.processedHashes = new Set(state.processedRecords.map(record => record.hash));
 
   saveProcessedRecords(state.processedRecords);
+  logInfo("Loaded processed hash records.", { count: state.processedRecords.length });
 }
 
 function saveProcessedRecords (records) {
@@ -177,6 +193,7 @@ function saveProcessedRecords (records) {
 
   state.processedRecords = limitedRecords;
   state.processedHashes = new Set(limitedRecords.map(record => record.hash));
+  logInfo("Saving processed hash records.", { count: limitedRecords.length });
   return setStoredValue(STORAGE_KEY, JSON.stringify(limitedRecords));
 }
 
@@ -187,6 +204,7 @@ function hasProcessedHash (hash) {
 function recordProcessedHash (hash) {
   if (hasProcessedHash(hash)) return true;
 
+  logInfo("Recording processed message hash.", { hash });
   return saveProcessedRecords([
     ...state.processedRecords,
     {
@@ -239,6 +257,7 @@ function createControls () {
     state.controls = existingControls;
     state.startButton = existingControls.querySelector("[data-telegram-webhook-start]");
     state.stopButton = existingControls.querySelector("[data-telegram-webhook-stop]");
+    logInfo("Reused existing webhook controls.");
     return;
   }
 
@@ -266,6 +285,7 @@ function createControls () {
   state.controls = controls;
   state.startButton = startButton;
   state.stopButton = stopButton;
+  logInfo("Created webhook controls.");
 }
 
 function updateControls () {
@@ -279,7 +299,10 @@ function updateControls () {
 }
 
 function createMask () {
-  if (document.getElementById(MASK_ID)) return;
+  if (document.getElementById(MASK_ID)) {
+    logInfo("Webhook mask already exists; skipping duplicate mask.");
+    return;
+  }
 
   const mask = document.createElement("div");
   mask.id = MASK_ID;
@@ -297,11 +320,15 @@ function createMask () {
   mask.textContent = "Telegram webhook monitor running";
 
   document.body.appendChild(mask);
+  logInfo("Created webhook running mask.");
 }
 
 function removeMask () {
   const mask = document.getElementById(MASK_ID);
-  if (mask) mask.remove();
+  if (mask) {
+    mask.remove();
+    logInfo("Removed webhook running mask.");
+  }
 }
 
 function extractMessageBody (contentElement) {
@@ -457,6 +484,12 @@ function sendWebhookMessage (content) {
   }
 
   const requestBody = JSON.stringify({ content });
+  const endpointLogLabel = getEndpointLogLabel(endpoint);
+  logInfo("Sending webhook message.", {
+    endpoint: endpointLogLabel,
+    contentLength: content.length,
+    hasApiKey: Boolean(getConfiguredApiKey()),
+  });
 
   if (typeof GM_xmlhttpRequest === "function") {
     return new Promise((resolve, reject) => {
@@ -471,18 +504,28 @@ function sendWebhookMessage (content) {
           const responseData = parseResponseBody(responseText);
 
           if (response.status < 200 || response.status >= 300) {
+            logWarn("Webhook API returned non-success status.", {
+              endpoint: endpointLogLabel,
+              status: response.status,
+            });
             reject(new Error(
               `Webhook API returned HTTP ${response.status}: ${getResponseMessage(responseData, responseText)}`,
             ));
             return;
           }
 
+          logInfo("Webhook API accepted message.", {
+            endpoint: endpointLogLabel,
+            status: response.status,
+          });
           resolve(responseData);
         },
         onerror: () => {
+          logError("Network error while sending webhook message.", { endpoint: endpointLogLabel });
           reject(new Error("Network error while sending webhook message."));
         },
         ontimeout: () => {
+          logError("Webhook API request timed out.", { endpoint: endpointLogLabel });
           reject(new Error("Webhook API request timed out."));
         },
       });
@@ -498,11 +541,19 @@ function sendWebhookMessage (content) {
     const responseData = parseResponseBody(responseText);
 
     if (!response.ok) {
+      logWarn("Webhook API returned non-success status.", {
+        endpoint: endpointLogLabel,
+        status: response.status,
+      });
       throw new Error(
         `Webhook API returned HTTP ${response.status}: ${getResponseMessage(responseData, responseText)}`,
       );
     }
 
+    logInfo("Webhook API accepted message.", {
+      endpoint: endpointLogLabel,
+      status: response.status,
+    });
     return responseData;
   });
 }
@@ -512,17 +563,29 @@ function getMessageContentElements () {
 }
 
 async function scanAndSendMessages () {
-  if (!state.running || state.scanning) return;
+  if (!state.running) {
+    logInfo("Scan skipped because monitoring is stopped.");
+    return;
+  }
+
+  if (state.scanning) {
+    logInfo("Scan skipped because another scan is already running.");
+    return;
+  }
 
   const scanRunId = state.runId;
   state.scanning = true;
+  logInfo("Started scan.", { runId: scanRunId });
 
   try {
     const contentElements = getMessageContentElements();
     logInfo(`Scanning ${contentElements.length} Telegram message candidates.`);
 
     for (const contentElement of contentElements) {
-      if (!state.running || state.runId !== scanRunId) break;
+      if (!state.running || state.runId !== scanRunId) {
+        logInfo("Stopping scan because monitoring state changed.", { runId: scanRunId, currentRunId: state.runId });
+        break;
+      }
 
       const record = extractMessageRecord(contentElement);
       if (!record) continue;
@@ -534,8 +597,18 @@ async function scanAndSendMessages () {
       }
 
       const hash = await hashContent(normalizedContent);
-      if (!state.running || state.runId !== scanRunId) break;
-      if (!hash || hasProcessedHash(hash)) continue;
+      if (!state.running || state.runId !== scanRunId) {
+        logInfo("Stopping scan after hash because monitoring state changed.", {
+          runId: scanRunId,
+          currentRunId: state.runId,
+        });
+        break;
+      }
+      if (!hash) continue;
+      if (hasProcessedHash(hash)) {
+        logInfo("Skipping already processed message hash.", { hash });
+        continue;
+      }
 
       const apiContent = formatApiContent(record);
 
@@ -557,14 +630,19 @@ async function scanAndSendMessages () {
     }
   } finally {
     state.scanning = false;
+    logInfo("Finished scan.", { runId: scanRunId });
     if (state.running && state.runId !== scanRunId) {
+      logInfo("Scheduling follow-up scan for newer run.", { runId: state.runId });
       window.setTimeout(scanAndSendMessages, 0);
     }
   }
 }
 
 function startMonitoring () {
-  if (state.running) return;
+  if (state.running) {
+    logInfo("Start ignored because monitoring is already running.", { runId: state.runId });
+    return;
+  }
 
   state.originalTitle = document.title;
   state.running = true;
@@ -578,6 +656,7 @@ function startMonitoring () {
   if (!state.timerId) {
     state.timerId = window.setInterval(scanAndSendMessages, CONFIG.intervalMs);
   }
+  logInfo("Started monitoring.", { runId: state.runId, intervalMs: CONFIG.intervalMs });
 }
 
 function stopMonitoring () {
@@ -588,9 +667,11 @@ function stopMonitoring () {
   if (state.timerId) {
     window.clearInterval(state.timerId);
     state.timerId = null;
+    logInfo("Cleared monitoring interval.");
   }
 
   if (!state.running) {
+    logInfo("Stop ignored because monitoring is already stopped.", { runId: state.runId });
     updateControls();
     return;
   }
@@ -599,6 +680,7 @@ function stopMonitoring () {
   removeMask();
   document.title = state.originalTitle;
   updateControls();
+  logInfo("Stopped monitoring.", { runId: state.runId });
 }
 
 function install () {
@@ -608,6 +690,7 @@ function install () {
   }
 
   window[INSTALL_FLAG] = true;
+  logInfo("Installing Telegram webhook monitor.");
   loadProcessedRecords();
   registerMenuCommands();
   createControls();
