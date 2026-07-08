@@ -11,6 +11,7 @@ const userscriptHeaders = {
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
 // @connect      *
 // ==/UserScript==`,
 };
