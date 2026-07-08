@@ -11,7 +11,8 @@ const CONFIG = {
   messageContentSelector: "div.content-inner",
   messageTimeSelector: "span.message-time",
   intervalMs: 60 * 1000,
-  titleCheckMinIntervalMs: 60 * 1000,
+  enableTitleObserver: false,
+  titleCheckMinIntervalMs: 10 * 1000,
   maxStoredHashes: 5000,
 };
 
@@ -62,6 +63,7 @@ function getDebugStateSnapshot () {
     hasTimer: Boolean(state.timerId),
     hasTitleObserver: Boolean(state.titleObserver),
     hasTitleCheckTimer: Boolean(state.titleCheckTimerId),
+    enableTitleObserver: CONFIG.enableTitleObserver,
     lastTitleCheckAt: state.lastTitleCheckAt,
     titleCheckMinIntervalMs: CONFIG.titleCheckMinIntervalMs,
     processedRecordCount: state.processedRecords.length,
@@ -147,6 +149,11 @@ function scheduleTitlePrefixCheck () {
 }
 
 function startTitleObserver () {
+  if (!CONFIG.enableTitleObserver) {
+    logInfo("Title observer is disabled by config.");
+    return;
+  }
+
   if (state.titleObserver) return;
 
   const titleElement = document.querySelector("title");
@@ -465,12 +472,16 @@ function extractMessageBody (contentElement) {
 
 function extractMessageTime (timeElement) {
   const messageTimeElement = timeElement;
-  const messageTime = messageTimeElement && messageTimeElement.getAttribute("title")
+  const titleTime = messageTimeElement && messageTimeElement.getAttribute("title")
     ? messageTimeElement.getAttribute("title").trim()
     : "";
+  const visibleTime = messageTimeElement
+    ? (messageTimeElement.innerText || messageTimeElement.textContent || "").trim()
+    : "";
+  const messageTime = titleTime || visibleTime;
 
   if (!messageTime) {
-    logWarn("Skipping message without a full .message-time title timestamp.", timeElement);
+    logWarn("Skipping message without readable .message-time text.", timeElement);
   }
 
   return messageTime;
