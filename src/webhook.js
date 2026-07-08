@@ -25,7 +25,6 @@ const DEBUG_GLOBAL_KEY = "TELEGRAM_WEBHOOK_DEBUG";
 const CONTROL_CONTAINER_ID = "telegram-webhook-controls";
 const MASK_ID = "telegram-webhook-mask";
 const TITLE_PREFIX = "[Webhook Running]";
-const RUNNING_FAVICON_HREF = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgBAMAAACBVGfHAAAAG1BMVEUAAABKR0dLSEdLSEdLR0dLSEhJSUlHR0dLSEfYtM4SAAAACHRSTlMAYPDXgUAfCYPvTrAAAAB/SURBVCjPY4AAdkHBAgYkINwBBIYIvkcHGLTA+EkdUKAG4bN2wEEAWCACIdAK4rN1IIEEoAATsoACwgqERR0ogIGBEVVAgIEZVcCAgQNVoIGhAlWgnUECVaCRDAEMQzGsxXAYhtPRPYfhfYwAwgxCzEDGjAbMiEJEJdbIxkgOAHGOxinLwMICAAAAAElFTkSuQmCC";
 const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
 const URL_REGEXP = /https?:\/\/[^\s<>"']+/gi;
@@ -41,7 +40,6 @@ const state = {
   titleCheckTimerId: null,
   lastTitleCheckAt: 0,
   originalTitle: document.title,
-  originalFavicon: null,
   processedRecords: [],
   processedHashes: new Set(),
   controls: null,
@@ -113,62 +111,6 @@ function getTitleWithoutPrefix (title) {
   return String(title || "").startsWith(TITLE_PREFIX)
     ? String(title || "").slice(TITLE_PREFIX.length).trim()
     : String(title || "");
-}
-
-function findFaviconElement () {
-  return document.querySelector("link[rel~=\"icon\"]");
-}
-
-function setNullableAttribute (element, name, value) {
-  if (value === null) {
-    element.removeAttribute(name);
-    return;
-  }
-
-  element.setAttribute(name, value);
-}
-
-function setRunningFavicon () {
-  let faviconElement = findFaviconElement();
-  const created = !faviconElement;
-
-  if (!faviconElement) {
-    faviconElement = document.createElement("link");
-    document.head.appendChild(faviconElement);
-  }
-
-  state.originalFavicon = {
-    element: faviconElement,
-    created,
-    rel: created ? null : faviconElement.getAttribute("rel"),
-    href: created ? null : faviconElement.getAttribute("href"),
-    type: created ? null : faviconElement.getAttribute("type"),
-    sizes: created ? null : faviconElement.getAttribute("sizes"),
-  };
-
-  faviconElement.setAttribute("rel", "icon");
-  faviconElement.setAttribute("type", "image/png");
-  faviconElement.setAttribute("sizes", "32x32");
-  faviconElement.setAttribute("href", RUNNING_FAVICON_HREF);
-  logInfo("Set running favicon.");
-}
-
-function restoreFavicon () {
-  if (!state.originalFavicon) return;
-
-  const { element, created, rel, href, type, sizes } = state.originalFavicon;
-
-  if (created) {
-    element.remove();
-  } else {
-    setNullableAttribute(element, "rel", rel);
-    setNullableAttribute(element, "href", href);
-    setNullableAttribute(element, "type", type);
-    setNullableAttribute(element, "sizes", sizes);
-  }
-
-  state.originalFavicon = null;
-  logInfo("Restored favicon.");
 }
 
 function ensureRunningTitlePrefix () {
@@ -880,7 +822,6 @@ function startMonitoring () {
   state.running = true;
   state.runId += 1;
   ensureRunningTitlePrefix();
-  setRunningFavicon();
   startTitleObserver();
 
   createMask();
@@ -914,7 +855,6 @@ function stopMonitoring () {
   stopTitleObserver();
   removeMask();
   document.title = state.originalTitle;
-  restoreFavicon();
   updateControls();
   logInfo("Stopped monitoring.", { runId: state.runId });
 }
