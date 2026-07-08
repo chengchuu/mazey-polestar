@@ -10,6 +10,7 @@ const CONFIG = {
   messageContainerSelector: "div.messages-container div.text-content",
   messageContentSelector: "div.text-content", // deprecated, kept for backward compatibility
   messageTimeSelector: "span.message-time",
+  messageListScrollSelector: "div.MessageList.custom-scroll",
   intervalMs: 60 * 1000,
   enableTitleObserver: false,
   filterApiMessageBody: true,
@@ -572,6 +573,7 @@ async function hashContent (content) {
 }
 
 function formatApiContent (record) {
+  logInfo("Original message content:", { messageTime: record.messageTime, content: record.content });
   const messageBody = CONFIG.filterApiMessageBody
     ? normalizeMessageContent(record.content)
     : record.content;
@@ -724,6 +726,22 @@ function getMessageContentEntries () {
   });
 }
 
+function scrollMessageListToBottom () {
+  const scrollElement = document.querySelector(CONFIG.messageListScrollSelector);
+
+  if (!scrollElement) {
+    logWarn("No Telegram message list scroll element matched selector.", CONFIG.messageListScrollSelector);
+    return;
+  }
+
+  scrollElement.scrollTop = scrollElement.scrollHeight;
+  logInfo("Scrolled Telegram message list to bottom.", {
+    scrollSelector: CONFIG.messageListScrollSelector,
+    scrollTop: scrollElement.scrollTop,
+    scrollHeight: scrollElement.scrollHeight,
+  });
+}
+
 async function scanAndSendMessages () {
   if (!state.running) {
     logInfo("Scan skipped because monitoring is stopped.");
@@ -740,6 +758,8 @@ async function scanAndSendMessages () {
   logInfo("Started scan.", { runId: scanRunId });
 
   try {
+    scrollMessageListToBottom();
+
     const messageEntries = getMessageContentEntries();
     logInfo("Scanning Telegram message candidates.", {
       count: messageEntries.length,
