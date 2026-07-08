@@ -12,6 +12,7 @@ const CONFIG = {
   messageTimeSelector: "span.message-time",
   intervalMs: 60 * 1000,
   enableTitleObserver: false,
+  filterApiMessageBody: true,
   titleCheckMinIntervalMs: 10 * 1000,
   maxStoredHashes: 5000,
 };
@@ -64,6 +65,7 @@ function getDebugStateSnapshot () {
     hasTitleObserver: Boolean(state.titleObserver),
     hasTitleCheckTimer: Boolean(state.titleCheckTimerId),
     enableTitleObserver: CONFIG.enableTitleObserver,
+    filterApiMessageBody: CONFIG.filterApiMessageBody,
     lastTitleCheckAt: state.lastTitleCheckAt,
     titleCheckMinIntervalMs: CONFIG.titleCheckMinIntervalMs,
     processedRecordCount: state.processedRecords.length,
@@ -88,6 +90,8 @@ function exposeDebugHelpers () {
     getProcessedRecords: () => state.processedRecords.map(record => ({ ...record })),
     getProcessedHashes: () => Array.from(state.processedHashes),
     getState: getDebugStateSnapshot,
+    normalizeContent: content => normalizeMessageContent(content),
+    clearProcessedRecords: () => clearProcessedRecords(),
     reloadProcessedRecords: () => {
       loadProcessedRecords();
       return getDebugStateSnapshot();
@@ -314,6 +318,13 @@ function saveProcessedRecords (records) {
   state.processedHashes = new Set(limitedRecords.map(record => record.hash));
   logInfo("Saving processed hash records.", { count: limitedRecords.length });
   return setStoredValue(STORAGE_KEY, JSON.stringify(limitedRecords));
+}
+
+function clearProcessedRecords () {
+  const isPersisted = saveProcessedRecords([]);
+
+  logInfo("Cleared processed hash records.", { persisted: isPersisted });
+  return getDebugStateSnapshot();
 }
 
 function hasProcessedHash (hash) {
@@ -553,7 +564,11 @@ async function hashContent (content) {
 }
 
 function formatApiContent (record) {
-  return `${record.messageTime}\n\n${record.content}`;
+  const messageBody = CONFIG.filterApiMessageBody
+    ? normalizeMessageContent(record.content)
+    : record.content;
+
+  return `${record.messageTime}\n\n${messageBody}`;
 }
 
 function getConfiguredEndpoint () {
