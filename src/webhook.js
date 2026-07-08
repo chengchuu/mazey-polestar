@@ -7,7 +7,7 @@ const WebhookCon = genCustomConsole("[Webhook]");
 
 const CONFIG = {
   endpoint: "",
-  messageContainerSelector: "div.messages-container > div.text-content",
+  messageContainerSelector: "div.messages-container div.text-content",
   messageContentSelector: "div.text-content", // deprecated, kept for backward compatibility
   messageTimeSelector: "span.message-time",
   intervalMs: 60 * 1000,
