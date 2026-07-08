@@ -630,7 +630,7 @@ function sendWebhookMessage (content) {
   const endpoint = getConfiguredEndpoint();
 
   if (!endpoint) {
-    return Promise.reject(new Error("CONFIG.endpoint is empty; configure a trusted webhook relay before starting."));
+    return Promise.reject(new Error("Webhook endpoint is not configured; set it via the Tampermonkey menu before starting."));
   }
 
   const requestBody = JSON.stringify({ content });

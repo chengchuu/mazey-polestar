@@ -3,11 +3,11 @@ const webpack = require("webpack");
 const { genCustomConsole } = require("mazey");
 const { userscriptHeaders } = require("./config/userscript");
 
-const WebpackCon = genCustomConsole("WebpackCon:");
+const webpackCon = genCustomConsole("[webpack]");
 const ENTRY = process.env.ENTRY;
-WebpackCon.log(`ENTRY ${ENTRY}`);
-const ENTRY_FILE = `./src/${ENTRY}.js` || "./src/index.js";
-WebpackCon.log(`ENTRY_PATH ${ENTRY_FILE}`);
+webpackCon.log(`ENTRY ${ENTRY}`);
+const ENTRY_FILE = `./src/${ENTRY}.js`;
+webpackCon.log(`ENTRY_PATH ${ENTRY_FILE}`);
 
 const plugins = [];
 
