@@ -15,10 +15,13 @@ const userscriptHeaders = {
 // @version      0.1.0
 // @description  Scan Telegram Web messages and send new readable messages to a webhook relay.
 // @match        https://web.telegram.org/*
+// @updateURL    https://raw.githubusercontent.com/chengchuu/webpack-build-demo/main/lib/webhook.user.js
+// @downloadURL  https://raw.githubusercontent.com/chengchuu/webpack-build-demo/main/lib/webhook.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
-// @connect      bilijili.com
+// @grant        GM_registerMenuCommand
+// @connect      *
 // ==/UserScript==`,
 };
 
@@ -37,7 +40,7 @@ const config = {
     [ENTRY]: ENTRY_FILE,
   },
   output: {
-    filename: "[name].js",
+    filename: ENTRY === "webhook" ? "[name].user.js" : "[name].js",
     path: path.resolve(__dirname, "lib"),
   },
   module: {

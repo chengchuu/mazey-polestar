@@ -4,13 +4,16 @@
 // @version      0.1.0
 // @description  Scan Telegram Web messages and send new readable messages to a webhook relay.
 // @match        https://web.telegram.org/*
+// @updateURL    https://raw.githubusercontent.com/chengchuu/webpack-build-demo/main/lib/webhook.user.js
+// @downloadURL  https://raw.githubusercontent.com/chengchuu/webpack-build-demo/main/lib/webhook.user.js
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_xmlhttpRequest
-// @connect      bilijili.com
+// @grant        GM_registerMenuCommand
+// @connect      *
 // ==/UserScript==
 
-/* global GM_getValue, GM_setValue, GM_xmlhttpRequest */
+/* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand */
 
 const CONFIG = {
   endpoint: "",
@@ -91,6 +94,61 @@ function setStoredValue (key, value) {
     logError(`Unable to persist storage key "${key}".`, error);
     return false;
   }
+}
+
+function setEndpointFromMenu () {
+  const currentEndpoint = getConfiguredEndpoint();
+  const nextEndpoint = window.prompt(
+    "Webhook endpoint URL, for example https://example.com/api/gee/webhook-message",
+    currentEndpoint,
+  );
+
+  if (nextEndpoint === null) return;
+
+  const endpoint = nextEndpoint.trim();
+  if (!endpoint) {
+    logWarn("Webhook endpoint was not changed because the value is empty.");
+    window.alert("Webhook endpoint was not changed because the value is empty.");
+    return;
+  }
+
+  if (!/^https?:\/\//i.test(endpoint)) {
+    logWarn("Webhook endpoint must start with http:// or https://.");
+    window.alert("Webhook endpoint must start with http:// or https://.");
+    return;
+  }
+
+  if (setStoredValue(ENDPOINT_STORAGE_KEY, endpoint)) {
+    window.alert("Webhook endpoint saved.");
+  }
+}
+
+function setApiKeyFromMenu () {
+  const currentApiKey = getConfiguredApiKey();
+  const placeholder = currentApiKey ? "Existing API key is saved. Enter a new value to replace it." : "";
+  const nextApiKey = window.prompt("Webhook API key. Leave empty to remove the saved key.", placeholder);
+
+  if (nextApiKey === null) return;
+
+  const apiKey = nextApiKey.trim();
+  if (setStoredValue(API_KEY_STORAGE_KEY, apiKey)) {
+    window.alert(apiKey ? "Webhook API key saved." : "Webhook API key removed.");
+  }
+}
+
+function showConfigFromMenu () {
+  const endpoint = getConfiguredEndpoint() || "(not set)";
+  const hasApiKey = getConfiguredApiKey() ? "yes" : "no";
+
+  window.alert(`Endpoint: ${endpoint}\nAPI key saved: ${hasApiKey}`);
+}
+
+function registerMenuCommands () {
+  if (typeof GM_registerMenuCommand !== "function") return;
+
+  GM_registerMenuCommand("Set webhook endpoint", setEndpointFromMenu);
+  GM_registerMenuCommand("Set webhook API key", setApiKeyFromMenu);
+  GM_registerMenuCommand("Show webhook configuration", showConfigFromMenu);
 }
 
 function loadProcessedRecords () {
@@ -547,6 +605,7 @@ function install () {
 
   window[INSTALL_FLAG] = true;
   loadProcessedRecords();
+  registerMenuCommands();
   createControls();
   updateControls();
   logInfo("Installed Telegram webhook monitor.");
