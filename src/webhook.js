@@ -721,7 +721,7 @@ async function scanAndSendMessages () {
       timeSelector: CONFIG.messageTimeSelector,
     });
 
-    for (const { contentElement, timeElement, containerElement } of messageEntries) {
+    for (const { contentElement, timeElement } of messageEntries) {
       if (!state.running || state.runId !== scanRunId) {
         logInfo("Stopping scan because monitoring state changed.", { runId: scanRunId, currentRunId: state.runId });
         break;
