@@ -714,12 +714,12 @@ function getMessageContentEntries () {
     const timeElements = Array.from(containerElement.querySelectorAll(CONFIG.messageTimeSelector));
 
     if (contentElements.length !== 1) {
-      logWarn("Message container has no matched content elements.", containerElement);
+      logWarn("Message container has no matched content elements.", contentElements);
       return [];
     }
 
     if (timeElements.length !== 1) {
-      logWarn("Message container has no matched time elements.", containerElement);
+      logWarn("Message container has no matched time elements.", timeElements);
       return [];
     }
 
