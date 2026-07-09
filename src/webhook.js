@@ -12,8 +12,8 @@ const CONFIG = {
   messageTimeSelector: "span.message-time",
   messageListScrollSelector: "div.MessageList.custom-scroll",
   intervalMs: 60 * 1000,
-  safeRedirectUrl: "http://blog.mazey.net/",
-  safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000,
+  safeRedirectUrl: "https://www.bing.com/search?q=peace",
+  safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000, // 2 * 60 * 1000, //
   filterApiMessageBody: true,
   maxStoredHashes: 5000,
   enableDebug: true,
@@ -139,7 +139,7 @@ function ensureRunningTitlePrefix () {
   if (document.title !== prefixedTitle) {
     state.originalTitle = cleanTitle;
     document.title = prefixedTitle;
-    logInfo("Applied running title prefix.", { title: prefixedTitle });
+    logInfo("Applied running title prefix:", prefixedTitle);
   }
 }
 
@@ -262,7 +262,7 @@ function loadProcessedRecords () {
   state.processedHashes = new Set(state.processedRecords.map(record => record.hash));
 
   saveProcessedRecords(state.processedRecords);
-  logInfo("Loaded processed hash records.", { count: state.processedRecords.length });
+  logInfo("Loaded processed hash records, count:", state.processedRecords.length);
 }
 
 function saveProcessedRecords (records) {
@@ -273,7 +273,7 @@ function saveProcessedRecords (records) {
 
   state.processedRecords = limitedRecords;
   state.processedHashes = new Set(limitedRecords.map(record => record.hash));
-  logInfo("Saving processed hash records.", { count: limitedRecords.length });
+  logInfo("Saving processed hash records, count:", limitedRecords.length);
   return setStoredValue(STORAGE_KEY, JSON.stringify(limitedRecords));
 }
 
@@ -291,7 +291,7 @@ function hasProcessedHash (hash) {
 function recordProcessedHash (hash) {
   if (hasProcessedHash(hash)) return true;
 
-  logInfo("Recording processed message hash.", { hash });
+  logInfo("Recording processed message hash:", hash);
   return saveProcessedRecords([
     ...state.processedRecords,
     {
@@ -442,7 +442,7 @@ function scheduleSafeRedirect () {
 
     if (!state.running) return;
 
-    logInfo("Safe redirect timer elapsed; redirecting.", { redirectUrl });
+    logInfo("Safe redirect timer elapsed; redirecting:", redirectUrl);
     window.location.replace(redirectUrl);
   }, CONFIG.safeRedirectAfterMs);
 
@@ -563,7 +563,7 @@ async function hashContent (content) {
 }
 
 function formatApiContent (record) {
-  logInfo("Original message content:", record.content);
+  // logInfo("Original message content:", record.content);
   const messageBody = CONFIG.filterApiMessageBody
     ? normalizeMessageContent(record.content)
     : record.content;
@@ -649,10 +649,7 @@ function sendWebhookMessage (content) {
             return;
           }
 
-          logInfo("Webhook API accepted message.", {
-            endpoint: endpointLogLabel,
-            status: response.status,
-          });
+          logInfo("Webhook API accepted message, status:", response.status);
           resolve(responseData);
         },
         onerror: () => {
@@ -685,10 +682,7 @@ function sendWebhookMessage (content) {
       );
     }
 
-    logInfo("Webhook API accepted message.", {
-      endpoint: endpointLogLabel,
-      status: response.status,
-    });
+    logInfo("Webhook API accepted message, status:", response.status);
     return responseData;
   });
 }
@@ -725,11 +719,12 @@ function scrollMessageListToBottom () {
   }
 
   scrollElement.scrollTop = scrollElement.scrollHeight;
-  logInfo("Scrolled Telegram message list to bottom.", {
-    scrollSelector: CONFIG.messageListScrollSelector,
-    scrollTop: scrollElement.scrollTop,
-    scrollHeight: scrollElement.scrollHeight,
-  });
+  logInfo("Scrolled Telegram message list to bottom, scrollHeight:", scrollElement.scrollHeight);
+  // {
+  //   scrollSelector: CONFIG.messageListScrollSelector,
+  //   scrollTop: scrollElement.scrollTop,
+  //   scrollHeight: scrollElement.scrollHeight,
+  // }
 }
 
 async function scanAndSendMessages () {
@@ -745,16 +740,17 @@ async function scanAndSendMessages () {
 
   const scanRunId = state.runId;
   state.scanning = true;
-  logInfo("Started scan.", { runId: scanRunId });
+  logInfo("Started scan, runId:", scanRunId);
 
   try {
     const messageEntries = getMessageContentEntries();
-    logInfo("Scanning Telegram message candidates.", {
-      count: messageEntries.length,
-      containerSelector: CONFIG.messageContainerSelector,
-      timeSelector: CONFIG.messageTimeSelector,
-      messageEntries,
-    });
+    logInfo("Scanning Telegram message candidates, count:", messageEntries.length);
+    // {
+    //   count: messageEntries.length,
+    //   containerSelector: CONFIG.messageContainerSelector,
+    //   timeSelector: CONFIG.messageTimeSelector,
+    //   messageEntries,
+    // }
 
     for (const { contentElement, timeElement } of messageEntries) {
       if (!state.running || state.runId !== scanRunId) {
@@ -795,7 +791,7 @@ async function scanAndSendMessages () {
       }
 
       const isPersisted = recordProcessedHash(hash);
-      logInfo("Delivered new Telegram message.", { messageTime: record.messageTime, hash });
+      logInfo("Delivered new Telegram message:", hash);
 
       if (!isPersisted) {
         logError("Message was delivered, but its hash could not be persisted.", { hash });
@@ -805,7 +801,7 @@ async function scanAndSendMessages () {
     }
   } finally {
     state.scanning = false;
-    logInfo("Finished scan.", { runId: scanRunId });
+    logInfo("Finished scan, runId:", scanRunId);
     if (state.running && state.runId !== scanRunId) {
       logInfo("Scheduling follow-up scan for newer run.", { runId: state.runId });
       window.setTimeout(scanAndSendMessages, 0);
