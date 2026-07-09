@@ -19,13 +19,13 @@ const CONFIG = {
   enableDebug: true,
 };
 
-const STORAGE_KEY = "telegram-webhook-processed-hashes-v1";
-const ENDPOINT_STORAGE_KEY = "telegram-webhook-endpoint";
-const API_KEY_STORAGE_KEY = "telegram-webhook-api-key";
-const INSTALL_FLAG = "__TELEGRAM_WEBHOOK_SCRIPT_INSTALLED__";
-const DEBUG_GLOBAL_KEY = "TELEGRAM_WEBHOOK_DEBUG";
-const CONTROL_CONTAINER_ID = "telegram-webhook-controls";
-const MASK_ID = "telegram-webhook-mask";
+const STORAGE_KEY = "peace-webhook-processed-hashes-v1";
+const ENDPOINT_STORAGE_KEY = "peace-webhook-endpoint";
+const API_KEY_STORAGE_KEY = "peace-webhook-api-key";
+const INSTALL_FLAG = "__PEACE_WEBHOOK_SCRIPT_INSTALLED__";
+const DEBUG_GLOBAL_KEY = "PEACE_WEBHOOK_DEBUG";
+const CONTROL_CONTAINER_ID = "peace-webhook-controls";
+const MASK_ID = "peace-webhook-mask";
 const TITLE_PREFIX = "[Webhook Running]";
 const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
@@ -342,8 +342,8 @@ function createControls () {
   const existingControls = document.getElementById(CONTROL_CONTAINER_ID);
   if (existingControls) {
     state.controls = existingControls;
-    state.startButton = existingControls.querySelector("[data-telegram-webhook-start]");
-    state.stopButton = existingControls.querySelector("[data-telegram-webhook-stop]");
+    state.startButton = existingControls.querySelector("[data-peace-webhook-start]");
+    state.stopButton = existingControls.querySelector("[data-peace-webhook-stop]");
     logInfo("Reused existing webhook controls.");
     return;
   }
@@ -358,11 +358,11 @@ function createControls () {
   controls.style.gap = "8px";
 
   const startButton = createButton("Start");
-  startButton.dataset.telegramWebhookStart = "true";
+  startButton.dataset.peaceWebhookStart = "true";
   startButton.addEventListener("click", startMonitoring);
 
   const stopButton = createButton("Stop");
-  stopButton.dataset.telegramWebhookStop = "true";
+  stopButton.dataset.peaceWebhookStop = "true";
   stopButton.style.display = "none";
   stopButton.addEventListener("click", stopMonitoring);
 
@@ -691,7 +691,7 @@ function getMessageContentEntries () {
   const containerElements = Array.from(document.querySelectorAll(CONFIG.messageContainerSelector));
 
   if (!containerElements.length) {
-    logWarn("No Telegram message containers matched selector.", CONFIG.messageContainerSelector);
+    logWarn("No Peace message containers matched selector.", CONFIG.messageContainerSelector);
     return [];
   }
 
@@ -714,12 +714,12 @@ function scrollMessageListToBottom () {
   const scrollElement = document.querySelector(CONFIG.messageListScrollSelector);
 
   if (!scrollElement) {
-    logWarn("No Telegram message list scroll element matched selector.", CONFIG.messageListScrollSelector);
+    logWarn("No Peace message list scroll element matched selector.", CONFIG.messageListScrollSelector);
     return;
   }
 
   scrollElement.scrollTop = scrollElement.scrollHeight;
-  logInfo("Scrolled Telegram message list to bottom, scrollHeight:", scrollElement.scrollHeight);
+  logInfo("Scrolled Peace message list to bottom, scrollHeight:", scrollElement.scrollHeight);
   // {
   //   scrollSelector: CONFIG.messageListScrollSelector,
   //   scrollTop: scrollElement.scrollTop,
@@ -744,7 +744,7 @@ async function scanAndSendMessages () {
 
   try {
     const messageEntries = getMessageContentEntries();
-    logInfo("Scanning Telegram message candidates, count:", messageEntries.length);
+    logInfo("Scanning Peace message candidates, count:", messageEntries.length);
     // {
     //   count: messageEntries.length,
     //   containerSelector: CONFIG.messageContainerSelector,
@@ -786,12 +786,12 @@ async function scanAndSendMessages () {
       try {
         await sendWebhookMessage(apiContent);
       } catch (error) {
-        logError("Failed to deliver Telegram message; it will be retried later.", error);
+        logError("Failed to deliver Peace message; it will be retried later.", error);
         continue;
       }
 
       const isPersisted = recordProcessedHash(hash);
-      logInfo("Delivered new Telegram message:", hash);
+      logInfo("Delivered new Peace message:", hash);
 
       if (!isPersisted) {
         logError("Message was delivered, but its hash could not be persisted.", { hash });
@@ -865,13 +865,13 @@ function install () {
   }
 
   window[INSTALL_FLAG] = true;
-  logInfo("Installing Telegram webhook monitor.");
+  logInfo("Installing Peace webhook monitor.");
   loadProcessedRecords();
   syncDebugHelpers();
   registerMenuCommands();
   createControls();
   updateControls();
-  logInfo("Installed Telegram webhook monitor.");
+  logInfo("Installed Peace webhook monitor.");
 }
 
 if (document.readyState === "loading") {
