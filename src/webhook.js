@@ -12,6 +12,7 @@ const CONFIG = {
   intervalMs: 60 * 1000,
   safeRedirectUrl: "https://www.bing.com/search?q=peace",
   safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000, // 2 * 60 * 1000, //
+  safeRedirectMessageTemplate: "Peace monitor stopped automatically after running continuously for {duration}.",
   filterApiMessageBody: true,
   maxStoredHashes: 5000,
   enableDebug: true,
@@ -427,6 +428,36 @@ function clearSafeRedirectTimer () {
   logInfo("Cleared safe redirect timer.");
 }
 
+function formatDurationUnit (value, unit) {
+  const roundedValue = Math.round(value * 10) / 10;
+  const unitLabel = roundedValue === 1 ? unit : `${unit}s`;
+
+  return `${roundedValue} ${unitLabel}`;
+}
+
+function formatDurationFromMs (durationMs) {
+  const seconds = Number(durationMs) / 1000;
+
+  if (seconds >= 24 * 60 * 60) {
+    return formatDurationUnit(seconds / 24 / 60 / 60, "day");
+  }
+
+  if (seconds >= 60 * 60) {
+    return formatDurationUnit(seconds / 60 / 60, "hour");
+  }
+
+  if (seconds >= 60) {
+    return formatDurationUnit(seconds / 60, "minute");
+  }
+
+  return formatDurationUnit(Math.max(seconds, 0), "second");
+}
+
+function getSafeRedirectMessage () {
+  return String(CONFIG.safeRedirectMessageTemplate || "")
+    .replace("{duration}", formatDurationFromMs(CONFIG.safeRedirectAfterMs));
+}
+
 function scheduleSafeRedirect () {
   clearSafeRedirectTimer();
 
@@ -436,18 +467,37 @@ function scheduleSafeRedirect () {
     return;
   }
 
-  state.safeRedirectTimerId = window.setTimeout(() => {
+  const redirectRunId = state.runId;
+
+  state.safeRedirectTimerId = window.setTimeout(async () => {
     state.safeRedirectTimerId = null;
 
-    if (!state.running) return;
+    if (!state.running || state.runId !== redirectRunId) return;
 
-    logInfo("Safe redirect timer elapsed; redirecting:", redirectUrl);
-    window.location.replace(redirectUrl);
+    try {
+      await sendWebhookMessage(getSafeRedirectMessage());
+      logInfo("Sent safe redirect message.");
+    } catch (error) {
+      logError("Failed to send safe redirect message before redirecting.", error);
+    } finally {
+      if (!state.running || state.runId !== redirectRunId) {
+        logInfo("Safe redirect canceled because monitoring state changed.", {
+          runId: redirectRunId,
+          currentRunId: state.runId,
+        });
+        return;
+      }
+
+      logInfo("Safe redirect timer elapsed; redirecting:", redirectUrl);
+      window.location.replace(redirectUrl);
+    }
   }, CONFIG.safeRedirectAfterMs);
 
   logInfo("Scheduled safe redirect.", {
     redirectUrl,
     delayMs: CONFIG.safeRedirectAfterMs,
+    runId: redirectRunId,
+    message: getSafeRedirectMessage(),
   });
 }
 
