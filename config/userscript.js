@@ -1,13 +1,13 @@
-function padTwoDigits (value) {
-  return String(value).padStart(2, "0");
-}
+const { formatDate } = require("mazey");
 
 function createUserscriptVersion (date = new Date()) {
-  const year = padTwoDigits(date.getFullYear() % 100);
-  const monthDay = `${date.getMonth() + 1}${padTwoDigits(date.getDate())}`;
-  const hourMinute = `${date.getHours()}${padTwoDigits(date.getMinutes())}`;
+  const [year, monthDay, hourMinute] = formatDate(date, "yyyy.MMdd.HHmm").split(".");
 
-  return `${year}.${monthDay}.${hourMinute}`;
+  return [
+    year.slice(2),
+    monthDay.replace(/^0/, ""),
+    hourMinute.replace(/^0/, ""),
+  ].join(".");
 }
 
 const userscriptVersion = createUserscriptVersion();
