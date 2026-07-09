@@ -479,18 +479,18 @@ function scheduleSafeRedirect () {
       logInfo("Sent safe redirect message.");
     } catch (error) {
       logError("Failed to send safe redirect message before redirecting.", error);
-    } finally {
-      if (!state.running || state.runId !== redirectRunId) {
-        logInfo("Safe redirect canceled because monitoring state changed.", {
-          runId: redirectRunId,
-          currentRunId: state.runId,
-        });
-        return;
-      }
-
-      logInfo("Safe redirect timer elapsed; redirecting:", redirectUrl);
-      window.location.replace(redirectUrl);
     }
+
+    if (!state.running || state.runId !== redirectRunId) {
+      logInfo("Safe redirect canceled because monitoring state changed.", {
+        runId: redirectRunId,
+        currentRunId: state.runId,
+      });
+      return;
+    }
+
+    logInfo("Safe redirect timer elapsed; redirecting:", redirectUrl);
+    window.location.replace(redirectUrl);
   }, CONFIG.safeRedirectAfterMs);
 
   logInfo("Scheduled safe redirect.", {
