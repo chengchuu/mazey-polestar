@@ -3,8 +3,6 @@
 
 import { genCustomConsole } from "mazey";
 
-const WebhookCon = genCustomConsole("[Webhook]");
-
 const CONFIG = {
   endpoint: "",
   messageContainerSelector: "div.messages-container div.text-content",
@@ -19,6 +17,7 @@ const CONFIG = {
   enableDebug: true,
 };
 
+const WebhookCon = genCustomConsole("[Webhook]");
 const STORAGE_KEY = "peace-webhook-processed-hashes-v1";
 const ENDPOINT_STORAGE_KEY = "peace-webhook-endpoint";
 const API_KEY_STORAGE_KEY = "peace-webhook-api-key";
