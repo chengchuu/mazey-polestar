@@ -691,7 +691,7 @@ function getMessageContentEntries () {
   const containerElements = Array.from(document.querySelectorAll(CONFIG.messageContainerSelector));
 
   if (!containerElements.length) {
-    logWarn("No Peace message containers matched selector.", CONFIG.messageContainerSelector);
+    logWarn("No message containers matched selector.", CONFIG.messageContainerSelector);
     return [];
   }
 
@@ -714,12 +714,12 @@ function scrollMessageListToBottom () {
   const scrollElement = document.querySelector(CONFIG.messageListScrollSelector);
 
   if (!scrollElement) {
-    logWarn("No Peace message list scroll element matched selector.", CONFIG.messageListScrollSelector);
+    logWarn("No message list scroll element matched selector.", CONFIG.messageListScrollSelector);
     return;
   }
 
   scrollElement.scrollTop = scrollElement.scrollHeight;
-  logInfo("Scrolled Peace message list to bottom, scrollHeight:", scrollElement.scrollHeight);
+  logInfo("Scrolled message list to bottom, scrollHeight:", scrollElement.scrollHeight);
   // {
   //   scrollSelector: CONFIG.messageListScrollSelector,
   //   scrollTop: scrollElement.scrollTop,
@@ -744,7 +744,7 @@ async function scanAndSendMessages () {
 
   try {
     const messageEntries = getMessageContentEntries();
-    logInfo("Scanning Peace message candidates, count:", messageEntries.length);
+    logInfo("Scanning message candidates, count:", messageEntries.length);
     // {
     //   count: messageEntries.length,
     //   containerSelector: CONFIG.messageContainerSelector,
@@ -786,12 +786,12 @@ async function scanAndSendMessages () {
       try {
         await sendWebhookMessage(apiContent);
       } catch (error) {
-        logError("Failed to deliver Peace message; it will be retried later.", error);
+        logError("Failed to deliver message; it will be retried later.", error);
         continue;
       }
 
       const isPersisted = recordProcessedHash(hash);
-      logInfo("Delivered new Peace message:", hash);
+      logInfo("Delivered new message:", hash);
 
       if (!isPersisted) {
         logError("Message was delivered, but its hash could not be persisted.", { hash });
@@ -865,13 +865,13 @@ function install () {
   }
 
   window[INSTALL_FLAG] = true;
-  logInfo("Installing Peace webhook monitor.");
+  logInfo("Installing webhook monitor.");
   loadProcessedRecords();
   syncDebugHelpers();
   registerMenuCommands();
   createControls();
   updateControls();
-  logInfo("Installed Peace webhook monitor.");
+  logInfo("Installed webhook monitor.");
 }
 
 if (document.readyState === "loading") {

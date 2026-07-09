@@ -2,7 +2,7 @@ const userscriptHeaders = {
   webhook: `// ==UserScript==
 // @name         Peace Webhook Monitor
 // @namespace    https://github.com/chengchuu/webpack-build-demo
-// @version      0.17.7
+// @version      0.17.8
 // @description  Scan Peace messages and send new readable messages to a webhook relay.
 // @match        https://web.telegram.org/*
 // @updateURL    https://raw.githubusercontent.com/chengchuu/webpack-build-demo/preview/lib/webhook.user.js
