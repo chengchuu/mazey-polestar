@@ -12,6 +12,8 @@ const CONFIG = {
   messageTimeSelector: "span.message-time",
   messageListScrollSelector: "div.MessageList.custom-scroll",
   intervalMs: 60 * 1000,
+  safeRedirectUrl: "http://blog.mazey.net/",
+  safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000,
   filterApiMessageBody: true,
   maxStoredHashes: 5000,
   enableDebug: true,
@@ -36,6 +38,7 @@ const state = {
   scanning: false,
   runId: 0,
   timerId: null,
+  safeRedirectTimerId: null,
   originalTitle: document.title,
   processedRecords: [],
   processedHashes: new Set(),
@@ -65,6 +68,8 @@ function getDebugStateSnapshot () {
     scanning: state.scanning,
     runId: state.runId,
     hasTimer: Boolean(state.timerId),
+    hasSafeRedirectTimer: Boolean(state.safeRedirectTimerId),
+    safeRedirectAfterMs: CONFIG.safeRedirectAfterMs,
     filterApiMessageBody: CONFIG.filterApiMessageBody,
     processedRecordCount: state.processedRecords.length,
     processedHashCount: state.processedHashes.size,
@@ -413,6 +418,38 @@ function removeMask () {
     mask.remove();
     logInfo("Removed webhook running mask.");
   }
+}
+
+function clearSafeRedirectTimer () {
+  if (!state.safeRedirectTimerId) return;
+
+  window.clearTimeout(state.safeRedirectTimerId);
+  state.safeRedirectTimerId = null;
+  logInfo("Cleared safe redirect timer.");
+}
+
+function scheduleSafeRedirect () {
+  clearSafeRedirectTimer();
+
+  const redirectUrl = String(CONFIG.safeRedirectUrl || "").trim();
+  if (!redirectUrl) {
+    logInfo("Safe redirect is disabled because safeRedirectUrl is empty.");
+    return;
+  }
+
+  state.safeRedirectTimerId = window.setTimeout(() => {
+    state.safeRedirectTimerId = null;
+
+    if (!state.running) return;
+
+    logInfo("Safe redirect timer elapsed; redirecting.", { redirectUrl });
+    window.location.replace(redirectUrl);
+  }, CONFIG.safeRedirectAfterMs);
+
+  logInfo("Scheduled safe redirect.", {
+    redirectUrl,
+    delayMs: CONFIG.safeRedirectAfterMs,
+  });
 }
 
 function extractMessageBody (contentElement) {
@@ -787,6 +824,7 @@ function startMonitoring () {
   state.running = true;
   state.runId += 1;
   ensureRunningTitlePrefix();
+  scheduleSafeRedirect();
 
   createMask();
   updateControls();
@@ -808,6 +846,8 @@ function stopMonitoring () {
     state.timerId = null;
     logInfo("Cleared monitoring interval.");
   }
+
+  clearSafeRedirectTimer();
 
   if (!state.running) {
     logInfo("Stop ignored because monitoring is already stopped.", { runId: state.runId });
