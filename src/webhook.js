@@ -399,11 +399,11 @@ function createMask () {
   mask.style.display = "flex";
   mask.style.alignItems = "center";
   mask.style.justifyContent = "center";
-  mask.style.background = "rgba(0, 0, 0, 0.92)";
+  mask.style.background = "rgba(0, 0, 0, 0.99)";
   mask.style.backdropFilter = "blur(16px)";
   mask.style.webkitBackdropFilter = "blur(16px)";
   mask.style.pointerEvents = "auto";
-  mask.style.color = "rgba(255, 255, 255, 0.9)";
+  mask.style.color = "rgba(255, 255, 255, 0.2)";
   mask.style.font = "14px Arial, sans-serif";
   mask.style.textShadow = "0 1px 2px rgba(0, 0, 0, 0.8)";
   mask.textContent = "Webhook Monitor Running";
