@@ -6,7 +6,6 @@ import { genCustomConsole } from "mazey";
 const CONFIG = {
   endpoint: "",
   messageContainerSelector: "div.messages-container div.text-content",
-  messageContentSelector: "div.text-content", // deprecated, kept for backward compatibility
   messageTimeSelector: "span.message-time",
   messageListScrollSelector: "div.MessageList.custom-scroll",
   intervalMs: 60 * 1000,
