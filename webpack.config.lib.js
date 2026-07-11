@@ -1,12 +1,27 @@
+const fs = require("fs");
 const path = require("path");
 const webpack = require("webpack");
 const { genCustomConsole } = require("mazey");
 const { userscriptHeaders } = require("./config/userscript");
 
 const webpackCon = genCustomConsole("[webpack]");
-const ENTRY = process.env.ENTRY;
+const ENTRY = String(process.env.ENTRY || "").trim();
+
+if (!ENTRY) {
+  throw new Error("Missing ENTRY environment variable. For example: ENTRY=webhook webpack --config webpack.config.lib.js");
+}
+
+if (!/^[A-Za-z0-9_-]+$/.test(ENTRY)) {
+  throw new Error(`Invalid ENTRY "${ENTRY}". Use only letters, numbers, underscores, and hyphens.`);
+}
+
 webpackCon.log(`ENTRY ${ENTRY}`);
 const ENTRY_FILE = `./src/${ENTRY}.js`;
+
+if (!fs.existsSync(path.resolve(__dirname, ENTRY_FILE))) {
+  throw new Error(`Unknown ENTRY "${ENTRY}": ${ENTRY_FILE} does not exist.`);
+}
+
 webpackCon.log(`ENTRY_PATH ${ENTRY_FILE}`);
 
 const plugins = [];

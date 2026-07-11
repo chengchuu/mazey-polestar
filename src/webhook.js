@@ -10,6 +10,7 @@ const CONFIG = {
   messageTimeSelector: "span.message-time",
   messageListScrollSelector: "div.MessageList.custom-scroll",
   intervalMs: 60 * 1000,
+  requestTimeoutMs: 30 * 1000,
   safeRedirectUrl: "https://www.bing.com/search?q=peace",
   safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000, // 2 * 60 * 1000, //
   safeRedirectMessageTemplate: "Peace monitor stopped automatically after running continuously for {duration}.",
@@ -152,11 +153,13 @@ function safeJsonParse (value, fallback) {
   }
 }
 
-function getStoredValue (key, defaultValue) {
+function getStoredValue (key, defaultValue, allowPageStorage = true) {
   try {
     if (typeof GM_getValue === "function") {
       return GM_getValue(key, defaultValue);
     }
+
+    if (!allowPageStorage) return defaultValue;
 
     const localValue = window.localStorage.getItem(key);
     return localValue === null ? defaultValue : localValue;
@@ -166,11 +169,16 @@ function getStoredValue (key, defaultValue) {
   }
 }
 
-function setStoredValue (key, value) {
+function setStoredValue (key, value, allowPageStorage = true) {
   try {
     if (typeof GM_setValue === "function") {
       GM_setValue(key, value);
       return true;
+    }
+
+    if (!allowPageStorage) {
+      logError(`Unable to securely persist storage key "${key}" because GM_setValue is unavailable.`);
+      return false;
     }
 
     window.localStorage.setItem(key, value);
@@ -178,6 +186,37 @@ function setStoredValue (key, value) {
   } catch (error) {
     logError(`Unable to persist storage key "${key}".`, error);
     return false;
+  }
+}
+
+function migrateLegacyApiKeyStorage () {
+  let legacyApiKey;
+
+  try {
+    legacyApiKey = window.localStorage.getItem(API_KEY_STORAGE_KEY);
+  } catch (error) {
+    logError("Unable to inspect legacy page storage for an API key.", error);
+    return;
+  }
+
+  if (legacyApiKey === null) return;
+
+  const normalizedApiKey = legacyApiKey.trim();
+  const hasSecureApiKey = Boolean(getConfiguredApiKey());
+  const wasMigrated = normalizedApiKey && !hasSecureApiKey
+    ? setStoredValue(API_KEY_STORAGE_KEY, normalizedApiKey, false)
+    : false;
+
+  try {
+    window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+    logInfo("Removed legacy API key from page storage.", { migrated: Boolean(wasMigrated) });
+  } catch (error) {
+    logError("Unable to remove the legacy API key from page storage.", error);
+    return;
+  }
+
+  if (normalizedApiKey && !hasSecureApiKey && !wasMigrated) {
+    logWarn("The legacy API key was removed but could not be migrated; configure it again from the userscript menu.");
   }
 }
 
@@ -219,15 +258,19 @@ function setEndpointFromMenu () {
 
 function setApiKeyFromMenu () {
   const currentApiKey = getConfiguredApiKey();
-  const placeholder = currentApiKey ? "Existing API key is saved. Enter a new value to replace it." : "";
-  const nextApiKey = window.prompt("Webhook API key. Leave empty to remove the saved key.", placeholder);
+  const promptMessage = currentApiKey
+    ? "An API key is already saved. Enter a new value to replace it, or leave empty to remove it."
+    : "Webhook API key. Leave empty to keep it unset.";
+  const nextApiKey = window.prompt(promptMessage, "");
 
   if (nextApiKey === null) return;
 
   const apiKey = nextApiKey.trim();
-  if (setStoredValue(API_KEY_STORAGE_KEY, apiKey)) {
+  if (setStoredValue(API_KEY_STORAGE_KEY, apiKey, false)) {
     logInfo(apiKey ? "Webhook API key saved from menu." : "Webhook API key removed from menu.");
     window.alert(apiKey ? "Webhook API key saved." : "Webhook API key removed.");
+  } else {
+    window.alert("The API key was not saved because secure userscript storage is unavailable.");
   }
 }
 
@@ -626,7 +669,7 @@ function getConfiguredEndpoint () {
 }
 
 function getConfiguredApiKey () {
-  return String(getStoredValue(API_KEY_STORAGE_KEY, "") || "").trim();
+  return String(getStoredValue(API_KEY_STORAGE_KEY, "", false) || "").trim();
 }
 
 function parseResponseBody (responseText) {
@@ -682,7 +725,7 @@ function sendWebhookMessage (content) {
         url: endpoint,
         headers: getWebhookHeaders(),
         data: requestBody,
-        timeout: 30000,
+        timeout: CONFIG.requestTimeoutMs,
         onload: (response) => {
           const responseText = response.responseText || "";
           const responseData = parseResponseBody(responseText);
@@ -713,10 +756,14 @@ function sendWebhookMessage (content) {
     });
   }
 
+  const abortController = new AbortController();
+  const timeoutId = window.setTimeout(() => abortController.abort(), CONFIG.requestTimeoutMs);
+
   return fetch(endpoint, {
     method: "POST",
     headers: getWebhookHeaders(),
     body: requestBody,
+    signal: abortController.signal,
   }).then(async response => {
     const responseText = await response.text();
     const responseData = parseResponseBody(responseText);
@@ -733,6 +780,15 @@ function sendWebhookMessage (content) {
 
     logInfo("Webhook API accepted message, status:", response.status);
     return responseData;
+  }).catch(error => {
+    if (error && error.name === "AbortError") {
+      logError("Webhook API request timed out.", { endpoint: endpointLogLabel });
+      throw new Error("Webhook API request timed out.");
+    }
+
+    throw error;
+  }).finally(() => {
+    window.clearTimeout(timeoutId);
   });
 }
 
@@ -915,6 +971,7 @@ function install () {
 
   window[INSTALL_FLAG] = true;
   logInfo("Installing webhook monitor.");
+  migrateLegacyApiKeyStorage();
   loadProcessedRecords();
   syncDebugHelpers();
   registerMenuCommands();
