@@ -1,7 +1,7 @@
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand, unsafeWindow */
 /* eslint-disable max-lines, max-len */
 
-import { genCustomConsole } from "mazey";
+import { genCustomConsole, formatDurationFromMs } from "mazey";
 
 const CONFIG = {
   endpoint: "",
@@ -468,31 +468,6 @@ function clearSafeRedirectTimer () {
   window.clearTimeout(state.safeRedirectTimerId);
   state.safeRedirectTimerId = null;
   logInfo("Cleared safe redirect timer.");
-}
-
-function formatDurationUnit (value, unit) {
-  const roundedValue = Math.round(value * 10) / 10;
-  const unitLabel = roundedValue === 1 ? unit : `${unit}s`;
-
-  return `${roundedValue} ${unitLabel}`;
-}
-
-function formatDurationFromMs (durationMs) {
-  const seconds = Number(durationMs) / 1000;
-
-  if (seconds >= 24 * 60 * 60) {
-    return formatDurationUnit(seconds / 24 / 60 / 60, "day");
-  }
-
-  if (seconds >= 60 * 60) {
-    return formatDurationUnit(seconds / 60 / 60, "hour");
-  }
-
-  if (seconds >= 60) {
-    return formatDurationUnit(seconds / 60, "minute");
-  }
-
-  return formatDurationUnit(Math.max(seconds, 0), "second");
 }
 
 function getSafeRedirectMessage () {

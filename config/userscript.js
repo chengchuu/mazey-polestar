@@ -1,16 +1,6 @@
-const { formatDate } = require("mazey");
+const { generateCalendarVersion } = require("mazey");
 
-function createUserscriptVersion (date = new Date()) {
-  const [year, monthDay, hourMinute] = formatDate(date, "yyyy.MMdd.HHmm").split(".");
-
-  return [
-    year.slice(2),
-    monthDay.replace(/^0/, ""),
-    hourMinute.replace(/^0/, ""),
-  ].join(".");
-}
-
-const userscriptVersion = createUserscriptVersion();
+const userscriptVersion = generateCalendarVersion();
 
 const userscriptHeaders = {
   webhook: `// ==UserScript==
@@ -32,6 +22,5 @@ const userscriptHeaders = {
 };
 
 module.exports = {
-  createUserscriptVersion,
   userscriptHeaders,
 };
