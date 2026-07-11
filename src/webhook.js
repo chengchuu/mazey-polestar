@@ -207,16 +207,16 @@ function migrateLegacyApiKeyStorage () {
     ? setStoredValue(API_KEY_STORAGE_KEY, normalizedApiKey, false)
     : false;
 
+  if (normalizedApiKey && !hasSecureApiKey && !wasMigrated) {
+    logWarn("The legacy API key remains in page storage because secure userscript storage is unavailable.");
+    return;
+  }
+
   try {
     window.localStorage.removeItem(API_KEY_STORAGE_KEY);
     logInfo("Removed legacy API key from page storage.", { migrated: Boolean(wasMigrated) });
   } catch (error) {
     logError("Unable to remove the legacy API key from page storage.", error);
-    return;
-  }
-
-  if (normalizedApiKey && !hasSecureApiKey && !wasMigrated) {
-    logWarn("The legacy API key was removed but could not be migrated; configure it again from the userscript menu.");
   }
 }
 
@@ -911,7 +911,9 @@ async function scanAndSendMessages () {
       logInfo("Scheduling follow-up scan for newer run.", { runId: state.runId });
       window.setTimeout(scanAndSendMessages, 0);
     }
-    scrollMessageListToBottom();
+    if (state.running && state.runId === scanRunId) {
+      scrollMessageListToBottom();
+    }
   }
 }
 
