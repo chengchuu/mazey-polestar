@@ -8,10 +8,11 @@ const CONFIG = {
   messageContainerSelector: "div.messages-container div.text-content",
   messageTimeSelector: "span.message-time",
   messageListScrollSelector: "div.MessageList.custom-scroll",
-  intervalMs: 60 * 1000,
+  intervalMs: 10 * 60 * 1000,
   requestTimeoutMs: 30 * 1000,
   safeRedirectUrl: "https://www.bing.com/search?q=peace",
-  safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000, // 2 * 60 * 1000, //
+  safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000,
+  // safeRedirectAfterMs: 2 * 60 * 1000, // for testing
   safeRedirectMessageTemplate: "Peace monitor stopped automatically after running continuously for {duration}.",
   filterApiMessageBody: true,
   maxStoredHashes: 5000,
@@ -799,11 +800,6 @@ function scrollMessageListToBottom () {
 
   scrollElement.scrollTop = scrollElement.scrollHeight;
   logInfo("Scrolled message list to bottom, scrollHeight:", scrollElement.scrollHeight);
-  // {
-  //   scrollSelector: CONFIG.messageListScrollSelector,
-  //   scrollTop: scrollElement.scrollTop,
-  //   scrollHeight: scrollElement.scrollHeight,
-  // }
 }
 
 async function scanAndSendMessages () {
@@ -824,12 +820,6 @@ async function scanAndSendMessages () {
   try {
     const messageEntries = getMessageContentEntries();
     logInfo("Scanning message candidates, count:", messageEntries.length);
-    // {
-    //   count: messageEntries.length,
-    //   containerSelector: CONFIG.messageContainerSelector,
-    //   timeSelector: CONFIG.messageTimeSelector,
-    //   messageEntries,
-    // }
 
     for (const { contentElement, timeElement } of messageEntries) {
       if (!state.running || state.runId !== scanRunId) {
@@ -856,7 +846,6 @@ async function scanAndSendMessages () {
       }
       if (!hash) continue;
       if (hasProcessedHash(hash)) {
-        // logInfo("Skipping already processed message hash.", { hash });
         continue;
       }
 
