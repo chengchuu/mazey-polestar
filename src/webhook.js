@@ -522,22 +522,17 @@ function scheduleSafeRedirect () {
 function extractMessageBody (contentElement) {
   const clone = contentElement.cloneNode(true);
 
-  // logInfo("Extracted message body HTML - innerHTML", clone.innerHTML);
-
   clone.querySelectorAll("img.emoji[alt]").forEach((emojiElement) => {
     const emojiText = emojiElement.getAttribute("alt") || "";
     emojiElement.replaceWith(document.createTextNode(emojiText));
   });
 
   clone.querySelectorAll(
-    ".message-signature, .message-views, .message-media-duration, .message-reaction, " + //  .message-time, [data-ignore-on-paste=\"true\"] .MessageMeta, , .Reactions
+    ".message-signature, .message-views, .message-media-duration, .message-reaction, " +
     ".icon-channelviews",
   ).forEach((metadataElement) => {
     metadataElement.remove();
   });
-
-  // logInfo("Extracted message body text - innerText", clone.innerText);
-  // logInfo("Extracted message body text - textContent", clone.textContent);
 
   return (clone.innerText || clone.textContent || "")
     .replace(/\u00a0/g, " ")
@@ -630,7 +625,6 @@ async function hashContent (content) {
 }
 
 function formatApiContent (record) {
-  // logInfo("Original message content:", record.content);
   const messageBody = CONFIG.filterApiMessageBody
     ? normalizeMessageContent(record.content)
     : record.content;
