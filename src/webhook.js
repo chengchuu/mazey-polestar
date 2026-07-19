@@ -5,11 +5,9 @@ import { genCustomConsole, formatDurationFromMs } from "mazey";
 
 const CONFIG = {
   endpoint: "",
-  messageContainerSelector: "div.messages-container div.text-content",
-  messageTimeSelector: "span.message-time",
-  messageListScrollSelector: "div.MessageList.custom-scroll",
   intervalMs: 10 * 60 * 1000,
   requestTimeoutMs: 30 * 1000,
+  afterScan: null,
   safeRedirectUrl: "https://www.bing.com/search?q=peace",
   safeRedirectAfterMs: 7 * 24 * 60 * 60 * 1000,
   // safeRedirectAfterMs: 2 * 60 * 1000, // for testing
@@ -20,19 +18,29 @@ const CONFIG = {
 };
 
 const WebhookCon = genCustomConsole("[Webhook]");
-const STORAGE_KEY = "peace-webhook-processed-hashes-v1";
+const DOMAIN_CONFIG_STORAGE_KEY = "peace-webhook-domain-config-map";
+const PROCESSED_RECORDS_STORAGE_KEY = "peace-webhook-processed-records-by-domain";
 const ENDPOINT_STORAGE_KEY = "peace-webhook-endpoint";
 const API_KEY_STORAGE_KEY = "peace-webhook-api-key";
 const INSTALL_FLAG = "__PEACE_WEBHOOK_SCRIPT_INSTALLED__";
 const DEBUG_GLOBAL_KEY = "PEACE_WEBHOOK_DEBUG";
+const CONFIG_GLOBAL_KEY = "PEACE_WEBHOOK_CONFIG";
 const CONTROL_CONTAINER_ID = "peace-webhook-controls";
 const MASK_ID = "peace-webhook-mask";
 const TITLE_PREFIX = "[Webhook Running]";
+const DOMAIN_CONFIG_FIELDS = [
+  "messageContainerSelector",
+  "messageKeySelector",
+  "messageExcludeSelector",
+  "messageListScrollSelector",
+];
 const HAN_REGEXP = createHanRegExp();
 const EMOJI_SEQUENCE_REGEXP = createEmojiSequenceRegExp();
 const URL_REGEXP = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9\u4E00-\u9FA5()!@:%_+.~#?&//=]*)/g;
 const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z]+/g;
 const SPECIFIC_CHARACTERS_REGEXP = /[()]+/g;
+const domainConfigMap = new Map();
+const domainAfterScanMap = new Map();
 
 const state = {
   running: false,
@@ -41,8 +49,8 @@ const state = {
   timerId: null,
   safeRedirectTimerId: null,
   originalTitle: document.title,
-  processedRecords: [],
-  processedHashes: new Set(),
+  processedRecordsByDomain: new Map(),
+  processedHashesByDomain: new Map(),
   controls: null,
   startButton: null,
   stopButton: null,
@@ -63,7 +71,12 @@ function logError (...args) {
 }
 
 function getDebugStateSnapshot () {
+  const domain = getCurrentDomainKey();
+  const processedRecords = getProcessedRecordsForDomain(domain);
+  const processedHashes = getProcessedHashesForDomain(domain);
+
   return {
+    domain,
     enableDebug: CONFIG.enableDebug,
     running: state.running,
     scanning: state.scanning,
@@ -72,8 +85,10 @@ function getDebugStateSnapshot () {
     hasSafeRedirectTimer: Boolean(state.safeRedirectTimerId),
     safeRedirectAfterMs: CONFIG.safeRedirectAfterMs,
     filterApiMessageBody: CONFIG.filterApiMessageBody,
-    processedRecordCount: state.processedRecords.length,
-    processedHashCount: state.processedHashes.size,
+    configuredDomainCount: domainConfigMap.size,
+    currentDomainConfigured: hasValidCurrentDomainConfig(),
+    processedRecordCount: processedRecords.length,
+    processedHashCount: processedHashes.size,
     endpointConfigured: Boolean(getConfiguredEndpoint()),
     apiKeyConfigured: Boolean(getConfiguredApiKey()),
   };
@@ -91,13 +106,13 @@ function exposeDebugHelpers () {
   const debugTarget = getPageWindow();
 
   debugTarget[DEBUG_GLOBAL_KEY] = {
-    getProcessedRecords: () => state.processedRecords.map(record => ({ ...record })),
-    getProcessedHashes: () => Array.from(state.processedHashes),
+    getProcessedRecords: () => getProcessedRecordsForDomain().map(record => ({ ...record })),
+    getProcessedHashes: () => Array.from(getProcessedHashesForDomain()),
     getState: getDebugStateSnapshot,
     normalizeContent: content => normalizeMessageContent(content),
-    clearProcessedRecords: () => clearProcessedRecords(),
+    clearProcessedRecords: () => clearCurrentDomainProcessedRecords(),
     reloadProcessedRecords: () => {
-      loadProcessedRecords();
+      loadProcessedRecordsByDomain();
       return getDebugStateSnapshot();
     },
   };
@@ -125,6 +140,53 @@ function syncDebugHelpers () {
   removeDebugHelpers();
 }
 
+function getAfterScanForDomain (domain = getCurrentDomainKey()) {
+  return domainAfterScanMap.get(domain) || CONFIG.afterScan;
+}
+
+function exposeConfigApi () {
+  const configTarget = getPageWindow();
+  const configApi = {};
+
+  Object.defineProperties(configApi, {
+    domain: {
+      enumerable: true,
+      get: getCurrentDomainKey,
+    },
+    afterScan: {
+      enumerable: true,
+      get: () => domainAfterScanMap.get(getCurrentDomainKey()) || null,
+      set: (callback) => {
+        const domain = getCurrentDomainKey();
+
+        if (callback === null) {
+          domainAfterScanMap.delete(domain);
+          logInfo("Restored default after-scan behavior.", { domain });
+          return;
+        }
+
+        if (typeof callback !== "function") {
+          throw new TypeError("PEACE_WEBHOOK_CONFIG.afterScan must be a function or null.");
+        }
+
+        domainAfterScanMap.set(domain, callback);
+        logInfo("Updated after-scan callback.", { domain });
+      },
+    },
+    getSelectors: {
+      enumerable: true,
+      value: () => Object.freeze(getCurrentDomainConfig()),
+    },
+  });
+
+  configTarget[CONFIG_GLOBAL_KEY] = Object.freeze(configApi);
+  logInfo("Exposed domain configuration API.", {
+    domain: getCurrentDomainKey(),
+    globalKey: CONFIG_GLOBAL_KEY,
+    target: configTarget === window ? "window" : "unsafeWindow",
+  });
+}
+
 function getTitleWithoutPrefix (title) {
   return String(title || "").startsWith(TITLE_PREFIX)
     ? String(title || "").slice(TITLE_PREFIX.length).trim()
@@ -148,7 +210,7 @@ function safeJsonParse (value, fallback) {
   try {
     return JSON.parse(value);
   } catch (error) {
-    logWarn("Stored hash data is malformed; using an empty history.", error);
+    logWarn("Stored JSON data is malformed; using a safe default.", error);
     return fallback;
   }
 }
@@ -189,35 +251,150 @@ function setStoredValue (key, value, allowPageStorage = true) {
   }
 }
 
-function migrateLegacyApiKeyStorage () {
-  let legacyApiKey;
+function createEmptyDomainConfig () {
+  return {
+    messageContainerSelector: "",
+    messageKeySelector: "",
+    messageExcludeSelector: "",
+    messageListScrollSelector: "",
+  };
+}
+
+function getCurrentDomainKey () {
+  return window.location.hostname.toLowerCase();
+}
+
+function isValidDomainKey (domain) {
+  return typeof domain === "string" &&
+    Boolean(domain) &&
+    domain === domain.trim().toLowerCase() &&
+    !/[/?#]/.test(domain);
+}
+
+function isValidCssSelector (selector, allowEmpty = true) {
+  const normalizedSelector = String(selector || "").trim();
+  if (!normalizedSelector) return allowEmpty;
 
   try {
-    legacyApiKey = window.localStorage.getItem(API_KEY_STORAGE_KEY);
+    document.querySelector(normalizedSelector);
+    return true;
   } catch (error) {
-    logError("Unable to inspect legacy page storage for an API key.", error);
+    return false;
+  }
+}
+
+function normalizeDomainConfig (value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const domainConfig = createEmptyDomainConfig();
+
+  for (const field of DOMAIN_CONFIG_FIELDS) {
+    if (typeof value[field] !== "string") return null;
+
+    const selector = value[field].trim();
+    if (!isValidCssSelector(selector)) return null;
+    domainConfig[field] = selector;
+  }
+
+  return domainConfig;
+}
+
+function loadDomainConfigMap () {
+  const rawConfigMap = getStoredValue(DOMAIN_CONFIG_STORAGE_KEY, "{}", false);
+  const storedConfigMap = typeof rawConfigMap === "string"
+    ? safeJsonParse(rawConfigMap, {})
+    : rawConfigMap;
+
+  domainConfigMap.clear();
+
+  if (!storedConfigMap || typeof storedConfigMap !== "object" || Array.isArray(storedConfigMap)) {
+    logWarn("Stored domain configuration map is malformed; using an empty map.");
     return;
   }
 
-  if (legacyApiKey === null) return;
+  Object.entries(storedConfigMap).forEach(([domain, value]) => {
+    const domainConfig = normalizeDomainConfig(value);
+    if (!isValidDomainKey(domain) || !domainConfig) {
+      logWarn("Ignoring malformed domain configuration entry.", { domain });
+      return;
+    }
 
-  const normalizedApiKey = legacyApiKey.trim();
-  const hasSecureApiKey = Boolean(getConfiguredApiKey());
-  const wasMigrated = normalizedApiKey && !hasSecureApiKey
-    ? setStoredValue(API_KEY_STORAGE_KEY, normalizedApiKey, false)
-    : false;
+    domainConfigMap.set(domain, domainConfig);
+  });
 
-  if (normalizedApiKey && !hasSecureApiKey && !wasMigrated) {
-    logWarn("The legacy API key remains in page storage because secure userscript storage is unavailable.");
-    return;
+  logInfo("Loaded domain configurations, count:", domainConfigMap.size);
+}
+
+function saveDomainConfigMap () {
+  const serializableConfigMap = Object.fromEntries(
+    Array.from(domainConfigMap, ([domain, domainConfig]) => [domain, { ...domainConfig }]),
+  );
+
+  return setStoredValue(DOMAIN_CONFIG_STORAGE_KEY, JSON.stringify(serializableConfigMap), false);
+}
+
+function getCurrentDomainConfig () {
+  const domainConfig = domainConfigMap.get(getCurrentDomainKey()) || createEmptyDomainConfig();
+  return { ...domainConfig };
+}
+
+function updateCurrentDomainConfig (updates) {
+  const domain = getCurrentDomainKey();
+  const previousConfig = domainConfigMap.get(domain);
+  const nextConfig = normalizeDomainConfig({
+    ...createEmptyDomainConfig(),
+    ...previousConfig,
+    ...updates,
+  });
+
+  if (!nextConfig) return false;
+
+  domainConfigMap.set(domain, nextConfig);
+  if (saveDomainConfigMap()) return true;
+
+  if (previousConfig) {
+    domainConfigMap.set(domain, previousConfig);
+  } else {
+    domainConfigMap.delete(domain);
+  }
+  return false;
+}
+
+function removeCurrentDomainConfig () {
+  const domain = getCurrentDomainKey();
+  const previousConfig = domainConfigMap.get(domain);
+  const previousAfterScan = domainAfterScanMap.get(domain);
+
+  if (!previousConfig) return false;
+
+  domainConfigMap.delete(domain);
+  domainAfterScanMap.delete(domain);
+
+  if (saveDomainConfigMap()) {
+    if (state.running) stopMonitoring();
+    return true;
   }
 
-  try {
-    window.localStorage.removeItem(API_KEY_STORAGE_KEY);
-    logInfo("Removed legacy API key from page storage.", { migrated: Boolean(wasMigrated) });
-  } catch (error) {
-    logError("Unable to remove the legacy API key from page storage.", error);
+  domainConfigMap.set(domain, previousConfig);
+  if (previousAfterScan) domainAfterScanMap.set(domain, previousAfterScan);
+  return false;
+}
+
+function getCurrentDomainConfigError () {
+  const domainConfig = getCurrentDomainConfig();
+
+  if (!domainConfig.messageContainerSelector) return "message container selector is required";
+  if (!domainConfig.messageKeySelector) return "message key selector is required";
+
+  for (const field of DOMAIN_CONFIG_FIELDS) {
+    if (!isValidCssSelector(domainConfig[field])) return `${field} is not a valid CSS selector`;
   }
+
+  return "";
+}
+
+function hasValidCurrentDomainConfig () {
+  return !getCurrentDomainConfigError();
 }
 
 function getEndpointLogLabel (endpoint) {
@@ -274,11 +451,85 @@ function setApiKeyFromMenu () {
   }
 }
 
-function showConfigFromMenu () {
+function setCurrentDomainSelectorFromMenu ({ field, label, required }) {
+  const domain = getCurrentDomainKey();
+  const currentValue = getCurrentDomainConfig()[field];
+  const nextValue = window.prompt(
+    `${label} for ${domain}.${required ? " This selector is required." : " Leave empty to disable it."}`,
+    currentValue,
+  );
+
+  if (nextValue === null) return;
+
+  const selector = nextValue.trim();
+  if (required && !selector) {
+    window.alert(`${label} for ${domain} cannot be empty.`);
+    return;
+  }
+
+  if (!isValidCssSelector(selector, !required)) {
+    window.alert(`${label} for ${domain} is not a valid CSS selector.`);
+    return;
+  }
+
+  if (!updateCurrentDomainConfig({ [field]: selector })) {
+    window.alert(`Unable to save ${label.toLowerCase()} for ${domain}.`);
+    return;
+  }
+
+  logInfo("Updated domain selector.", { domain, field });
+  window.alert(`${label} saved for ${domain}.`);
+}
+
+function showCurrentDomainConfigFromMenu () {
+  const domain = getCurrentDomainKey();
+  const domainConfig = getCurrentDomainConfig();
   const endpoint = getConfiguredEndpoint() || "(not set)";
   const hasApiKey = getConfiguredApiKey() ? "yes" : "no";
 
-  window.alert(`Endpoint: ${endpoint}\nAPI key saved: ${hasApiKey}`);
+  window.alert([
+    `Domain: ${domain}`,
+    `Message container selector: ${domainConfig.messageContainerSelector || "(not set)"}`,
+    `Message key selector: ${domainConfig.messageKeySelector || "(not set)"}`,
+    `Message exclusion selector: ${domainConfig.messageExcludeSelector || "(disabled)"}`,
+    `Message list scroll selector: ${domainConfig.messageListScrollSelector || "(disabled)"}`,
+    `Global endpoint: ${endpoint}`,
+    `API key saved: ${hasApiKey}`,
+  ].join("\n"));
+}
+
+function removeCurrentDomainConfigFromMenu () {
+  const domain = getCurrentDomainKey();
+
+  if (!domainConfigMap.has(domain)) {
+    window.alert(`No selector configuration is saved for ${domain}.`);
+    return;
+  }
+
+  if (!window.confirm(`Remove the selector configuration for ${domain}?`)) return;
+
+  if (removeCurrentDomainConfig()) {
+    logInfo("Removed domain configuration.", { domain });
+    window.alert(`Selector configuration removed for ${domain}.`);
+    return;
+  }
+
+  window.alert(`Unable to remove the selector configuration for ${domain}.`);
+}
+
+function showConfiguredDomainsFromMenu () {
+  const domains = Array.from(domainConfigMap.keys()).sort();
+  window.alert(domains.length ? `Configured domains:\n${domains.join("\n")}` : "No domains are configured.");
+}
+
+function clearCurrentDomainProcessedRecordsFromMenu () {
+  const domain = getCurrentDomainKey();
+  if (!window.confirm(`Clear processed-message records for ${domain}?`)) return;
+
+  const result = clearCurrentDomainProcessedRecords();
+  window.alert(result.persisted
+    ? `Processed-message records cleared for ${domain}.`
+    : `Records were cleared in memory for ${domain}, but persistence failed.`);
 }
 
 function registerMenuCommands () {
@@ -289,54 +540,122 @@ function registerMenuCommands () {
 
   GM_registerMenuCommand("Set webhook endpoint", setEndpointFromMenu);
   GM_registerMenuCommand("Set webhook API key", setApiKeyFromMenu);
-  GM_registerMenuCommand("Show webhook configuration", showConfigFromMenu);
+  const domain = getCurrentDomainKey();
+  GM_registerMenuCommand(`Set message container selector for ${domain}`, () => {
+    setCurrentDomainSelectorFromMenu({
+      field: "messageContainerSelector",
+      label: "Message container selector",
+      required: true,
+    });
+  });
+  GM_registerMenuCommand(`Set message key selector for ${domain}`, () => {
+    setCurrentDomainSelectorFromMenu({
+      field: "messageKeySelector",
+      label: "Message key selector",
+      required: true,
+    });
+  });
+  GM_registerMenuCommand(`Set message exclusion selector for ${domain}`, () => {
+    setCurrentDomainSelectorFromMenu({
+      field: "messageExcludeSelector",
+      label: "Message exclusion selector",
+      required: false,
+    });
+  });
+  GM_registerMenuCommand(`Set message list scroll selector for ${domain}`, () => {
+    setCurrentDomainSelectorFromMenu({
+      field: "messageListScrollSelector",
+      label: "Message list scroll selector",
+      required: false,
+    });
+  });
+  GM_registerMenuCommand(`Show configuration for ${domain}`, showCurrentDomainConfigFromMenu);
+  GM_registerMenuCommand(`Remove configuration for ${domain}`, removeCurrentDomainConfigFromMenu);
+  GM_registerMenuCommand("Show configured domains", showConfiguredDomainsFromMenu);
+  GM_registerMenuCommand(`Clear processed records for ${domain}`, clearCurrentDomainProcessedRecordsFromMenu);
   logInfo("Registered Tampermonkey menu commands.");
 }
 
-function loadProcessedRecords () {
-  const rawRecords = getStoredValue(STORAGE_KEY, "[]");
-  const parsedRecords = typeof rawRecords === "string" ? safeJsonParse(rawRecords, []) : rawRecords;
-  const records = Array.isArray(parsedRecords) ? parsedRecords : [];
+function normalizeProcessedRecords (records) {
+  if (!Array.isArray(records)) return [];
 
-  state.processedRecords = records
+  return records
     .filter(record => record && typeof record.hash === "string" && Number.isFinite(record.processedAt))
     .sort((leftRecord, rightRecord) => leftRecord.processedAt - rightRecord.processedAt)
     .slice(-CONFIG.maxStoredHashes);
-  state.processedHashes = new Set(state.processedRecords.map(record => record.hash));
-
-  saveProcessedRecords(state.processedRecords);
-  logInfo("Loaded processed hash records, count:", state.processedRecords.length);
 }
 
-function saveProcessedRecords (records) {
-  const limitedRecords = records
-    .filter(record => record && typeof record.hash === "string" && Number.isFinite(record.processedAt))
-    .sort((leftRecord, rightRecord) => leftRecord.processedAt - rightRecord.processedAt)
-    .slice(-CONFIG.maxStoredHashes);
+function loadProcessedRecordsByDomain () {
+  const rawRecordsMap = getStoredValue(PROCESSED_RECORDS_STORAGE_KEY, "{}", false);
+  const storedRecordsMap = typeof rawRecordsMap === "string"
+    ? safeJsonParse(rawRecordsMap, {})
+    : rawRecordsMap;
 
-  state.processedRecords = limitedRecords;
-  state.processedHashes = new Set(limitedRecords.map(record => record.hash));
-  logInfo("Saving processed hash records, count:", limitedRecords.length);
-  return setStoredValue(STORAGE_KEY, JSON.stringify(limitedRecords));
+  state.processedRecordsByDomain.clear();
+  state.processedHashesByDomain.clear();
+
+  if (!storedRecordsMap || typeof storedRecordsMap !== "object" || Array.isArray(storedRecordsMap)) {
+    logWarn("Stored processed-record map is malformed; using an empty map.");
+    return;
+  }
+
+  Object.entries(storedRecordsMap).forEach(([domain, records]) => {
+    if (!isValidDomainKey(domain) || !Array.isArray(records)) {
+      logWarn("Ignoring malformed processed-record entry.", { domain });
+      return;
+    }
+
+    const normalizedRecords = normalizeProcessedRecords(records);
+    state.processedRecordsByDomain.set(domain, normalizedRecords);
+    state.processedHashesByDomain.set(domain, new Set(normalizedRecords.map(record => record.hash)));
+  });
+
+  logInfo("Loaded processed-record domains, count:", state.processedRecordsByDomain.size);
 }
 
-function clearProcessedRecords () {
-  const isPersisted = saveProcessedRecords([]);
+function saveProcessedRecordsByDomain () {
+  const serializableRecordsMap = Object.fromEntries(
+    Array.from(state.processedRecordsByDomain, ([domain, records]) => [domain, records.map(record => ({ ...record }))]),
+  );
 
-  logInfo("Cleared processed hash records.", { persisted: isPersisted });
-  return getDebugStateSnapshot();
+  return setStoredValue(PROCESSED_RECORDS_STORAGE_KEY, JSON.stringify(serializableRecordsMap), false);
 }
 
-function hasProcessedHash (hash) {
-  return state.processedHashes.has(hash);
+function getProcessedRecordsForDomain (domain = getCurrentDomainKey()) {
+  return state.processedRecordsByDomain.get(domain) || [];
 }
 
-function recordProcessedHash (hash) {
-  if (hasProcessedHash(hash)) return true;
+function getProcessedHashesForDomain (domain = getCurrentDomainKey()) {
+  return state.processedHashesByDomain.get(domain) || new Set();
+}
 
-  logInfo("Recording processed message hash:", hash);
-  return saveProcessedRecords([
-    ...state.processedRecords,
+function setProcessedRecordsForDomain (domain, records) {
+  const normalizedRecords = normalizeProcessedRecords(records);
+
+  state.processedRecordsByDomain.set(domain, normalizedRecords);
+  state.processedHashesByDomain.set(domain, new Set(normalizedRecords.map(record => record.hash)));
+  logInfo("Saving processed hash records.", { domain, count: normalizedRecords.length });
+  return saveProcessedRecordsByDomain();
+}
+
+function clearCurrentDomainProcessedRecords () {
+  const domain = getCurrentDomainKey();
+  const persisted = setProcessedRecordsForDomain(domain, []);
+
+  logInfo("Cleared processed hash records.", { domain, persisted });
+  return { domain, persisted };
+}
+
+function hasProcessedHash (hash, domain = getCurrentDomainKey()) {
+  return getProcessedHashesForDomain(domain).has(hash);
+}
+
+function recordProcessedHash (hash, domain = getCurrentDomainKey()) {
+  if (hasProcessedHash(hash, domain)) return true;
+
+  logInfo("Recording processed message hash.", { domain, hash });
+  return setProcessedRecordsForDomain(domain, [
+    ...getProcessedRecordsForDomain(domain),
     {
       hash,
       processedAt: Date.now(),
@@ -519,55 +838,63 @@ function scheduleSafeRedirect () {
   });
 }
 
-function extractMessageBody (contentElement) {
+function extractMessageBody (contentElement, domainConfig = getCurrentDomainConfig()) {
   const clone = contentElement.cloneNode(true);
 
-  clone.querySelectorAll("img.emoji[alt]").forEach((emojiElement) => {
-    const emojiText = emojiElement.getAttribute("alt") || "";
-    emojiElement.replaceWith(document.createTextNode(emojiText));
+  clone.querySelectorAll("img[alt]").forEach((imageElement) => {
+    const imageText = imageElement.getAttribute("alt") || "";
+    imageElement.replaceWith(document.createTextNode(imageText));
   });
 
-  clone.querySelectorAll(
-    ".message-signature, .message-views, .message-media-duration, .message-reaction, " +
-    ".icon-channelviews",
-  ).forEach((metadataElement) => {
-    metadataElement.remove();
-  });
+  const excludeSelector = domainConfig.messageExcludeSelector;
+  if (excludeSelector) {
+    try {
+      clone.querySelectorAll(excludeSelector).forEach((excludedElement) => {
+        excludedElement.remove();
+      });
+    } catch (error) {
+      logWarn("Unable to apply message exclusion selector; continuing without exclusions.", {
+        domain: getCurrentDomainKey(),
+        selector: excludeSelector,
+        error,
+      });
+    }
+  }
 
   return (clone.innerText || clone.textContent || "")
     .replace(/\u00a0/g, " ")
     .trim();
 }
 
-function extractMessageTime (timeElement) {
-  const messageTimeElement = timeElement;
-  const titleTime = messageTimeElement && messageTimeElement.getAttribute("title")
-    ? messageTimeElement.getAttribute("title").trim()
-    : "";
-  const visibleTime = messageTimeElement
-    ? (messageTimeElement.innerText || messageTimeElement.textContent || "").trim()
-    : "";
-  const messageTime = titleTime || visibleTime;
+function extractMessageKey (keyElement) {
+  if (!keyElement) return "";
 
-  if (!messageTime) {
-    logWarn("Skipping message without readable .message-time text.", timeElement);
+  const title = (keyElement.getAttribute("title") || "").trim();
+  if (title) return title;
+
+  const formValue = "value" in keyElement ? String(keyElement.value || "").trim() : "";
+  if (formValue) return formValue;
+
+  const visibleText = (keyElement.innerText || keyElement.textContent || "").trim();
+  if (!visibleText) {
+    logWarn("Skipping message without a readable message key.", keyElement);
   }
 
-  return messageTime;
+  return visibleText;
 }
 
-function extractMessageRecord (contentElement, timeElement) {
-  const content = extractMessageBody(contentElement);
-  const messageTime = extractMessageTime(timeElement);
+function extractMessageRecord (contentElement, keyElement, domainConfig) {
+  const content = extractMessageBody(contentElement, domainConfig);
+  const messageKey = extractMessageKey(keyElement);
 
-  if (!content || !messageTime) {
+  if (!content || !messageKey) {
     if (!content) logWarn("Skipping message without readable content.", contentElement);
     return null;
   }
 
   return {
     content,
-    messageTime,
+    messageKey,
   };
 }
 
@@ -629,7 +956,7 @@ function formatApiContent (record) {
     ? normalizeMessageContent(record.content)
     : record.content;
 
-  return `${record.messageTime}\n${messageBody}`;
+  return `${record.messageKey}\n${messageBody}`;
 }
 
 function getConfiguredEndpoint () {
@@ -761,39 +1088,112 @@ function sendWebhookMessage (content) {
   });
 }
 
-function getMessageContentEntries () {
-  const containerElements = Array.from(document.querySelectorAll(CONFIG.messageContainerSelector));
+function getMessageContentEntries (domainConfig = getCurrentDomainConfig()) {
+  let containerElements;
+
+  try {
+    containerElements = Array.from(document.querySelectorAll(domainConfig.messageContainerSelector));
+  } catch (error) {
+    logError("Unable to query message containers.", {
+      domain: getCurrentDomainKey(),
+      selector: domainConfig.messageContainerSelector,
+      error,
+    });
+    return [];
+  }
 
   if (!containerElements.length) {
-    logWarn("No message containers matched selector.", CONFIG.messageContainerSelector);
+    logWarn("No message containers matched selector.", {
+      domain: getCurrentDomainKey(),
+      selector: domainConfig.messageContainerSelector,
+    });
     return [];
   }
 
   return containerElements.flatMap(containerElement => {
-    const timeElements = Array.from(containerElement.querySelectorAll(CONFIG.messageTimeSelector));
+    let keyElements;
 
-    if (timeElements.length !== 1) {
-      logWarn("Message container has no matched time elements.", timeElements);
+    try {
+      keyElements = [
+        ...(containerElement.matches(domainConfig.messageKeySelector) ? [containerElement] : []),
+        ...containerElement.querySelectorAll(domainConfig.messageKeySelector),
+      ];
+    } catch (error) {
+      logError("Unable to query a message key.", {
+        domain: getCurrentDomainKey(),
+        selector: domainConfig.messageKeySelector,
+        error,
+      });
+      return [];
+    }
+
+    if (keyElements.length !== 1) {
+      logWarn("Message container must contain exactly one matched key element.", {
+        matchedKeyCount: keyElements.length,
+        containerElement,
+      });
       return [];
     }
 
     return [{
       contentElement: containerElement,
-      timeElement: timeElements[0],
+      keyElement: keyElements[0],
     }];
   });
 }
 
-function scrollMessageListToBottom () {
-  const scrollElement = document.querySelector(CONFIG.messageListScrollSelector);
+function scrollMessageListToBottom (domainConfig = getCurrentDomainConfig()) {
+  const scrollSelector = domainConfig.messageListScrollSelector;
+  if (!scrollSelector) {
+    logInfo("Default after-scan scrolling is disabled for the current domain.");
+    return;
+  }
+
+  let scrollElement;
+
+  try {
+    scrollElement = document.querySelector(scrollSelector);
+  } catch (error) {
+    logWarn("Unable to query the message list scroll element.", {
+      domain: getCurrentDomainKey(),
+      selector: scrollSelector,
+      error,
+    });
+    return;
+  }
 
   if (!scrollElement) {
-    logWarn("No message list scroll element matched selector.", CONFIG.messageListScrollSelector);
+    logWarn("No message list scroll element matched selector.", {
+      domain: getCurrentDomainKey(),
+      selector: scrollSelector,
+    });
     return;
   }
 
   scrollElement.scrollTop = scrollElement.scrollHeight;
   logInfo("Scrolled message list to bottom, scrollHeight:", scrollElement.scrollHeight);
+}
+
+async function runAfterScan ({ domain, runId, messageCount, domainConfig }) {
+  const callback = getAfterScanForDomain(domain);
+
+  if (typeof callback !== "function") {
+    scrollMessageListToBottom(domainConfig);
+    return;
+  }
+
+  const context = Object.freeze({
+    domain,
+    runId,
+    running: state.running,
+    messageCount,
+  });
+
+  try {
+    await callback(context);
+  } catch (error) {
+    logError("After-scan callback failed; future scans will continue.", { domain, error });
+  }
 }
 
 async function scanAndSendMessages () {
@@ -808,20 +1208,34 @@ async function scanAndSendMessages () {
   }
 
   const scanRunId = state.runId;
+  const scanDomain = getCurrentDomainKey();
+  const domainConfig = getCurrentDomainConfig();
+  const domainConfigError = getCurrentDomainConfigError();
+
+  if (domainConfigError) {
+    logWarn("Scan skipped because the current domain configuration is invalid.", {
+      domain: scanDomain,
+      error: domainConfigError,
+    });
+    return;
+  }
+
+  let messageCount = 0;
   state.scanning = true;
-  logInfo("Started scan, runId:", scanRunId);
+  logInfo("Started scan.", { domain: scanDomain, runId: scanRunId });
 
   try {
-    const messageEntries = getMessageContentEntries();
-    logInfo("Scanning message candidates, count:", messageEntries.length);
+    const messageEntries = getMessageContentEntries(domainConfig);
+    messageCount = messageEntries.length;
+    logInfo("Scanning message candidates.", { domain: scanDomain, count: messageCount });
 
-    for (const { contentElement, timeElement } of messageEntries) {
+    for (const { contentElement, keyElement } of messageEntries) {
       if (!state.running || state.runId !== scanRunId) {
         logInfo("Stopping scan because monitoring state changed.", { runId: scanRunId, currentRunId: state.runId });
         break;
       }
 
-      const record = extractMessageRecord(contentElement, timeElement);
+      const record = extractMessageRecord(contentElement, keyElement, domainConfig);
       if (!record) continue;
 
       const normalizedContent = normalizeMessageContent(record.content);
@@ -839,7 +1253,7 @@ async function scanAndSendMessages () {
         break;
       }
       if (!hash) continue;
-      if (hasProcessedHash(hash)) {
+      if (hasProcessedHash(hash, scanDomain)) {
         continue;
       }
 
@@ -852,7 +1266,7 @@ async function scanAndSendMessages () {
         continue;
       }
 
-      const isPersisted = recordProcessedHash(hash);
+      const isPersisted = recordProcessedHash(hash, scanDomain);
       logInfo("Delivered new message:", hash);
 
       if (!isPersisted) {
@@ -862,14 +1276,20 @@ async function scanAndSendMessages () {
       if (!state.running || state.runId !== scanRunId) break;
     }
   } finally {
+    if (state.running && state.runId === scanRunId) {
+      await runAfterScan({
+        domain: scanDomain,
+        runId: scanRunId,
+        messageCount,
+        domainConfig,
+      });
+    }
+
     state.scanning = false;
-    logInfo("Finished scan, runId:", scanRunId);
+    logInfo("Finished scan.", { domain: scanDomain, runId: scanRunId });
     if (state.running && state.runId !== scanRunId) {
       logInfo("Scheduling follow-up scan for newer run.", { runId: state.runId });
       window.setTimeout(scanAndSendMessages, 0);
-    }
-    if (state.running && state.runId === scanRunId) {
-      scrollMessageListToBottom();
     }
   }
 }
@@ -877,6 +1297,17 @@ async function scanAndSendMessages () {
 function startMonitoring () {
   if (state.running) {
     logInfo("Start ignored because monitoring is already running.", { runId: state.runId });
+    return;
+  }
+
+  const domain = getCurrentDomainKey();
+  const domainConfigError = getCurrentDomainConfigError();
+  if (domainConfigError) {
+    logWarn("Monitoring was not started because the current domain configuration is invalid.", {
+      domain,
+      error: domainConfigError,
+    });
+    window.alert(`Cannot start monitoring on ${domain}: ${domainConfigError}. Configure selectors from the userscript menu.`);
     return;
   }
 
@@ -930,9 +1361,10 @@ function install () {
 
   window[INSTALL_FLAG] = true;
   logInfo("Installing webhook monitor.");
-  migrateLegacyApiKeyStorage();
-  loadProcessedRecords();
+  loadDomainConfigMap();
+  loadProcessedRecordsByDomain();
   syncDebugHelpers();
+  exposeConfigApi();
   registerMenuCommands();
   createControls();
   updateControls();
