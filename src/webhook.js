@@ -5,7 +5,7 @@ import { genCustomConsole, formatDurationFromMs } from "mazey";
 
 const CONFIG = {
   endpoint: "",
-  intervalMs: 10 * 60 * 1000,
+  intervalMs: 30 * 60 * 1000,
   requestTimeoutMs: 30 * 1000,
   afterScan: null,
   safeRedirectUrl: "https://www.bing.com/search?q=peace",
@@ -14,7 +14,7 @@ const CONFIG = {
   safeRedirectMessageTemplate: "Peace monitor stopped automatically after running continuously for {duration}.",
   filterApiMessageBody: true,
   maxStoredHashes: 5000,
-  enableDebug: false,
+  enableDebug: true,
 };
 
 const WebhookCon = genCustomConsole("[Webhook]");
@@ -634,7 +634,7 @@ function setProcessedRecordsForDomain (domain, records) {
 
   state.processedRecordsByDomain.set(domain, normalizedRecords);
   state.processedHashesByDomain.set(domain, new Set(normalizedRecords.map(record => record.hash)));
-  logInfo("Saving processed hash records.", { domain, count: normalizedRecords.length });
+  // logInfo("Saving processed hash records.", { domain, count: normalizedRecords.length });
   return saveProcessedRecordsByDomain();
 }
 
@@ -653,7 +653,7 @@ function hasProcessedHash (hash, domain = getCurrentDomainKey()) {
 function recordProcessedHash (hash, domain = getCurrentDomainKey()) {
   if (hasProcessedHash(hash, domain)) return true;
 
-  logInfo("Recording processed message hash.", { domain, hash });
+  // logInfo("Recording processed message hash:", hash);
   return setProcessedRecordsForDomain(domain, [
     ...getProcessedRecordsForDomain(domain),
     {
@@ -1008,11 +1008,6 @@ function sendWebhookMessage (content) {
 
   const requestBody = JSON.stringify({ content });
   const endpointLogLabel = getEndpointLogLabel(endpoint);
-  logInfo("Sending webhook message.", {
-    endpoint: endpointLogLabel,
-    contentLength: content.length,
-    hasApiKey: Boolean(getConfiguredApiKey()),
-  });
 
   if (typeof GM_xmlhttpRequest === "function") {
     return new Promise((resolve, reject) => {
@@ -1037,7 +1032,7 @@ function sendWebhookMessage (content) {
             return;
           }
 
-          logInfo("Webhook API accepted message, status:", response.status);
+          // logInfo("Webhook API accepted message, status:", response.status);
           resolve(responseData);
         },
         onerror: () => {
