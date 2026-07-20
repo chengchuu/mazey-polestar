@@ -5,7 +5,7 @@ import { genCustomConsole, formatDurationFromMs } from "mazey";
 
 const CONFIG = {
   endpoint: "",
-  intervalMs: 30 * 60 * 1000,
+  intervalMs: 1 * 60 * 1000,
   requestTimeoutMs: 30 * 1000,
   afterScan: null,
   safeRedirectUrl: "https://www.bing.com/search?q=peace",
