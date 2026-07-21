@@ -71,6 +71,7 @@
     "@reduxjs/toolkit": "^2.12.0",
     "axios": "^1.1.3",
     "fingerprintjs2": "^2.1.4",
+    "layer-esm": "^1.0.13",
     "mazey": "^5.2.0",
     "mazey-wordpress-utils": "^1.3.1",
     "qr-code-styling": "^1.6.0-rc.1",
