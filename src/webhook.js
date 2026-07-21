@@ -1,4 +1,4 @@
-/* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand, unsafeWindow */
+/* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand, GM_addValueChangeListener, unsafeWindow */
 /* eslint-disable max-lines, max-len */
 
 import { genCustomConsole, formatDurationFromMs } from "mazey";
@@ -179,12 +179,19 @@ function exposeConfigApi () {
     },
   });
 
-  configTarget[CONFIG_GLOBAL_KEY] = Object.freeze(configApi);
+  try {
+    configTarget[CONFIG_GLOBAL_KEY] = Object.freeze(configApi);
+  } catch (error) {
+    logWarn("Unable to expose the domain configuration API; installation will continue.", error);
+    return false;
+  }
+
   logInfo("Exposed domain configuration API.", {
     domain: getCurrentDomainKey(),
     globalKey: CONFIG_GLOBAL_KEY,
     target: configTarget === window ? "window" : "unsafeWindow",
   });
+  return true;
 }
 
 function getTitleWithoutPrefix (title) {
@@ -299,17 +306,15 @@ function normalizeDomainConfig (value) {
   return domainConfig;
 }
 
-function loadDomainConfigMap () {
-  const rawConfigMap = getStoredValue(DOMAIN_CONFIG_STORAGE_KEY, "{}", false);
+function createDomainConfigMapFromStoredValue (rawConfigMap) {
   const storedConfigMap = typeof rawConfigMap === "string"
     ? safeJsonParse(rawConfigMap, {})
     : rawConfigMap;
-
-  domainConfigMap.clear();
+  const nextDomainConfigMap = new Map();
 
   if (!storedConfigMap || typeof storedConfigMap !== "object" || Array.isArray(storedConfigMap)) {
     logWarn("Stored domain configuration map is malformed; using an empty map.");
-    return;
+    return nextDomainConfigMap;
   }
 
   Object.entries(storedConfigMap).forEach(([domain, value]) => {
@@ -319,15 +324,32 @@ function loadDomainConfigMap () {
       return;
     }
 
-    domainConfigMap.set(domain, domainConfig);
+    nextDomainConfigMap.set(domain, domainConfig);
   });
 
+  return nextDomainConfigMap;
+}
+
+function replaceDomainConfigMap (nextDomainConfigMap) {
+  domainConfigMap.clear();
+  nextDomainConfigMap.forEach((domainConfig, domain) => {
+    domainConfigMap.set(domain, domainConfig);
+  });
+}
+
+function readDomainConfigMapFromStorage () {
+  const rawConfigMap = getStoredValue(DOMAIN_CONFIG_STORAGE_KEY, "{}", false);
+  return createDomainConfigMapFromStoredValue(rawConfigMap);
+}
+
+function loadDomainConfigMap () {
+  replaceDomainConfigMap(readDomainConfigMapFromStorage());
   logInfo("Loaded domain configurations, count:", domainConfigMap.size);
 }
 
-function saveDomainConfigMap () {
+function saveDomainConfigMap (configMap = domainConfigMap) {
   const serializableConfigMap = Object.fromEntries(
-    Array.from(domainConfigMap, ([domain, domainConfig]) => [domain, { ...domainConfig }]),
+    Array.from(configMap, ([domain, domainConfig]) => [domain, { ...domainConfig }]),
   );
 
   return setStoredValue(DOMAIN_CONFIG_STORAGE_KEY, JSON.stringify(serializableConfigMap), false);
@@ -340,44 +362,37 @@ function getCurrentDomainConfig () {
 
 function updateCurrentDomainConfig (updates) {
   const domain = getCurrentDomainKey();
-  const previousConfig = domainConfigMap.get(domain);
+  const latestDomainConfigMap = readDomainConfigMapFromStorage();
+  const latestDomainConfig = latestDomainConfigMap.get(domain);
   const nextConfig = normalizeDomainConfig({
     ...createEmptyDomainConfig(),
-    ...previousConfig,
+    ...latestDomainConfig,
     ...updates,
   });
 
   if (!nextConfig) return false;
 
-  domainConfigMap.set(domain, nextConfig);
-  if (saveDomainConfigMap()) return true;
+  latestDomainConfigMap.set(domain, nextConfig);
+  if (!saveDomainConfigMap(latestDomainConfigMap)) return false;
 
-  if (previousConfig) {
-    domainConfigMap.set(domain, previousConfig);
-  } else {
-    domainConfigMap.delete(domain);
-  }
-  return false;
+  replaceDomainConfigMap(latestDomainConfigMap);
+  return true;
 }
 
 function removeCurrentDomainConfig () {
   const domain = getCurrentDomainKey();
-  const previousConfig = domainConfigMap.get(domain);
-  const previousAfterScan = domainAfterScanMap.get(domain);
+  const latestDomainConfigMap = readDomainConfigMapFromStorage();
 
-  if (!previousConfig) return false;
+  if (!latestDomainConfigMap.has(domain)) return false;
 
-  domainConfigMap.delete(domain);
+  latestDomainConfigMap.delete(domain);
+  if (!saveDomainConfigMap(latestDomainConfigMap)) return false;
+
+  replaceDomainConfigMap(latestDomainConfigMap);
   domainAfterScanMap.delete(domain);
+  if (state.running) stopMonitoring();
 
-  if (saveDomainConfigMap()) {
-    if (state.running) stopMonitoring();
-    return true;
-  }
-
-  domainConfigMap.set(domain, previousConfig);
-  if (previousAfterScan) domainAfterScanMap.set(domain, previousAfterScan);
-  return false;
+  return true;
 }
 
 function getCurrentDomainConfigError () {
@@ -579,24 +594,34 @@ function registerMenuCommands () {
 function normalizeProcessedRecords (records) {
   if (!Array.isArray(records)) return [];
 
-  return records
+  const recordsByHash = new Map();
+
+  records
     .filter(record => record && typeof record.hash === "string" && Number.isFinite(record.processedAt))
+    .forEach((record) => {
+      const existingRecord = recordsByHash.get(record.hash);
+      if (!existingRecord || record.processedAt > existingRecord.processedAt) {
+        recordsByHash.set(record.hash, {
+          hash: record.hash,
+          processedAt: record.processedAt,
+        });
+      }
+    });
+
+  return Array.from(recordsByHash.values())
     .sort((leftRecord, rightRecord) => leftRecord.processedAt - rightRecord.processedAt)
     .slice(-CONFIG.maxStoredHashes);
 }
 
-function loadProcessedRecordsByDomain () {
-  const rawRecordsMap = getStoredValue(PROCESSED_RECORDS_STORAGE_KEY, "{}", false);
+function createProcessedRecordsMapFromStoredValue (rawRecordsMap) {
   const storedRecordsMap = typeof rawRecordsMap === "string"
     ? safeJsonParse(rawRecordsMap, {})
     : rawRecordsMap;
-
-  state.processedRecordsByDomain.clear();
-  state.processedHashesByDomain.clear();
+  const nextProcessedRecordsByDomain = new Map();
 
   if (!storedRecordsMap || typeof storedRecordsMap !== "object" || Array.isArray(storedRecordsMap)) {
     logWarn("Stored processed-record map is malformed; using an empty map.");
-    return;
+    return nextProcessedRecordsByDomain;
   }
 
   Object.entries(storedRecordsMap).forEach(([domain, records]) => {
@@ -606,16 +631,36 @@ function loadProcessedRecordsByDomain () {
     }
 
     const normalizedRecords = normalizeProcessedRecords(records);
+    nextProcessedRecordsByDomain.set(domain, normalizedRecords);
+  });
+
+  return nextProcessedRecordsByDomain;
+}
+
+function replaceProcessedRecordsByDomain (nextProcessedRecordsByDomain) {
+  state.processedRecordsByDomain.clear();
+  state.processedHashesByDomain.clear();
+
+  nextProcessedRecordsByDomain.forEach((records, domain) => {
+    const normalizedRecords = normalizeProcessedRecords(records);
     state.processedRecordsByDomain.set(domain, normalizedRecords);
     state.processedHashesByDomain.set(domain, new Set(normalizedRecords.map(record => record.hash)));
   });
+}
 
+function readProcessedRecordsMapFromStorage () {
+  const rawRecordsMap = getStoredValue(PROCESSED_RECORDS_STORAGE_KEY, "{}", false);
+  return createProcessedRecordsMapFromStoredValue(rawRecordsMap);
+}
+
+function loadProcessedRecordsByDomain () {
+  replaceProcessedRecordsByDomain(readProcessedRecordsMapFromStorage());
   logInfo("Loaded processed-record domains, count:", state.processedRecordsByDomain.size);
 }
 
-function saveProcessedRecordsByDomain () {
+function saveProcessedRecordsByDomain (recordsMap = state.processedRecordsByDomain) {
   const serializableRecordsMap = Object.fromEntries(
-    Array.from(state.processedRecordsByDomain, ([domain, records]) => [domain, records.map(record => ({ ...record }))]),
+    Array.from(recordsMap, ([domain, records]) => [domain, records.map(record => ({ ...record }))]),
   );
 
   return setStoredValue(PROCESSED_RECORDS_STORAGE_KEY, JSON.stringify(serializableRecordsMap), false);
@@ -630,12 +675,13 @@ function getProcessedHashesForDomain (domain = getCurrentDomainKey()) {
 }
 
 function setProcessedRecordsForDomain (domain, records) {
+  const latestRecordsMap = readProcessedRecordsMapFromStorage();
   const normalizedRecords = normalizeProcessedRecords(records);
 
-  state.processedRecordsByDomain.set(domain, normalizedRecords);
-  state.processedHashesByDomain.set(domain, new Set(normalizedRecords.map(record => record.hash)));
+  latestRecordsMap.set(domain, normalizedRecords);
+  replaceProcessedRecordsByDomain(latestRecordsMap);
   // logInfo("Saving processed hash records.", { domain, count: normalizedRecords.length });
-  return saveProcessedRecordsByDomain();
+  return saveProcessedRecordsByDomain(latestRecordsMap);
 }
 
 function clearCurrentDomainProcessedRecords () {
@@ -651,16 +697,56 @@ function hasProcessedHash (hash, domain = getCurrentDomainKey()) {
 }
 
 function recordProcessedHash (hash, domain = getCurrentDomainKey()) {
-  if (hasProcessedHash(hash, domain)) return true;
+  const latestRecordsMap = readProcessedRecordsMapFromStorage();
+  const latestDomainRecords = latestRecordsMap.get(domain) || [];
+  const latestDomainHashes = new Set(latestDomainRecords.map(record => record.hash));
+
+  if (latestDomainHashes.has(hash)) {
+    replaceProcessedRecordsByDomain(latestRecordsMap);
+    return true;
+  }
 
   // logInfo("Recording processed message hash:", hash);
-  return setProcessedRecordsForDomain(domain, [
+  const mergedRecords = normalizeProcessedRecords([
+    ...latestDomainRecords,
     ...getProcessedRecordsForDomain(domain),
     {
       hash,
       processedAt: Date.now(),
     },
   ]);
+
+  latestRecordsMap.set(domain, mergedRecords);
+  replaceProcessedRecordsByDomain(latestRecordsMap);
+  return saveProcessedRecordsByDomain(latestRecordsMap);
+}
+
+function registerStorageChangeListeners () {
+  if (typeof GM_addValueChangeListener !== "function") {
+    logWarn("GM_addValueChangeListener is unavailable; cross-tab storage updates will refresh before each write.");
+    return;
+  }
+
+  try {
+    GM_addValueChangeListener(DOMAIN_CONFIG_STORAGE_KEY, (...changeArgs) => {
+      const newValue = changeArgs[2];
+      const storedValue = newValue === undefined ? "{}" : newValue;
+      replaceDomainConfigMap(createDomainConfigMapFromStoredValue(storedValue));
+      logInfo("Synchronized domain configurations from userscript storage.");
+      if (state.running && !hasValidCurrentDomainConfig()) {
+        logWarn("Stopping monitoring because the current domain configuration was removed or became invalid.");
+        stopMonitoring();
+      }
+    });
+    GM_addValueChangeListener(PROCESSED_RECORDS_STORAGE_KEY, (...changeArgs) => {
+      const newValue = changeArgs[2];
+      const storedValue = newValue === undefined ? "{}" : newValue;
+      replaceProcessedRecordsByDomain(createProcessedRecordsMapFromStoredValue(storedValue));
+      logInfo("Synchronized processed records from userscript storage.");
+    });
+  } catch (error) {
+    logWarn("Unable to register cross-tab storage listeners; storage will refresh before each write.", error);
+  }
 }
 
 function createButton (text) {
@@ -866,7 +952,7 @@ function extractMessageBody (contentElement, domainConfig = getCurrentDomainConf
     .trim();
 }
 
-function extractMessageKey (keyElement) {
+function extractMessageKey (keyElement, logMissing = true) {
   if (!keyElement) return "";
 
   const title = (keyElement.getAttribute("title") || "").trim();
@@ -876,7 +962,7 @@ function extractMessageKey (keyElement) {
   if (formValue) return formValue;
 
   const visibleText = (keyElement.innerText || keyElement.textContent || "").trim();
-  if (!visibleText) {
+  if (!visibleText && logMissing) {
     logWarn("Skipping message without a readable message key.", keyElement);
   }
 
@@ -1122,8 +1208,10 @@ function getMessageContentEntries (domainConfig = getCurrentDomainConfig()) {
       return [];
     }
 
-    if (keyElements.length !== 1) {
-      logWarn("Message container must contain exactly one matched key element.", {
+    const keyElement = keyElements.find(candidateElement => extractMessageKey(candidateElement, false));
+
+    if (!keyElement) {
+      logWarn("Message container has no usable matched key element.", {
         matchedKeyCount: keyElements.length,
         containerElement,
       });
@@ -1132,7 +1220,7 @@ function getMessageContentEntries (domainConfig = getCurrentDomainConfig()) {
 
     return [{
       contentElement: containerElement,
-      keyElement: keyElements[0],
+      keyElement,
     }];
   });
 }
@@ -1358,6 +1446,7 @@ function install () {
   logInfo("Installing webhook monitor.");
   loadDomainConfigMap();
   loadProcessedRecordsByDomain();
+  registerStorageChangeListeners();
   syncDebugHelpers();
   exposeConfigApi();
   registerMenuCommands();
