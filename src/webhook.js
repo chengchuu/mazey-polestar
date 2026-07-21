@@ -1,7 +1,14 @@
 /* global GM_getValue, GM_setValue, GM_xmlhttpRequest, GM_registerMenuCommand, GM_addValueChangeListener, unsafeWindow */
 /* eslint-disable max-lines, max-len */
 
-import { genCustomConsole, formatDurationFromMs } from "mazey";
+import {
+  extractElementText,
+  formatDurationFromMs,
+  genCustomConsole,
+  isValidCssSelector,
+  parseJsonSafe,
+  sha256Hex,
+} from "mazey";
 
 const CONFIG = {
   endpoint: "",
@@ -213,13 +220,14 @@ function ensureRunningTitlePrefix () {
   }
 }
 
-function safeJsonParse (value, fallback) {
-  try {
-    return JSON.parse(value);
-  } catch (error) {
-    logWarn("Stored JSON data is malformed; using a safe default.", error);
-    return fallback;
-  }
+function parseStoredJson (value, fallback) {
+  const parseFailure = {};
+  const parsedValue = parseJsonSafe(value, parseFailure);
+
+  if (parsedValue !== parseFailure) return parsedValue;
+
+  logWarn("Stored JSON data is malformed; using a safe default.");
+  return fallback;
 }
 
 function getStoredValue (key, defaultValue, allowPageStorage = true) {
@@ -278,18 +286,6 @@ function isValidDomainKey (domain) {
     !/[/?#]/.test(domain);
 }
 
-function isValidCssSelector (selector, allowEmpty = true) {
-  const normalizedSelector = String(selector || "").trim();
-  if (!normalizedSelector) return allowEmpty;
-
-  try {
-    document.querySelector(normalizedSelector);
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-
 function normalizeDomainConfig (value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 
@@ -299,7 +295,7 @@ function normalizeDomainConfig (value) {
     if (typeof value[field] !== "string") return null;
 
     const selector = value[field].trim();
-    if (!isValidCssSelector(selector)) return null;
+    if (!isValidCssSelector(selector, { allowEmpty: true })) return null;
     domainConfig[field] = selector;
   }
 
@@ -308,7 +304,7 @@ function normalizeDomainConfig (value) {
 
 function createDomainConfigMapFromStoredValue (rawConfigMap) {
   const storedConfigMap = typeof rawConfigMap === "string"
-    ? safeJsonParse(rawConfigMap, {})
+    ? parseStoredJson(rawConfigMap, {})
     : rawConfigMap;
   const nextDomainConfigMap = new Map();
 
@@ -402,7 +398,9 @@ function getCurrentDomainConfigError () {
   if (!domainConfig.messageKeySelector) return "message key selector is required";
 
   for (const field of DOMAIN_CONFIG_FIELDS) {
-    if (!isValidCssSelector(domainConfig[field])) return `${field} is not a valid CSS selector`;
+    if (!isValidCssSelector(domainConfig[field], { allowEmpty: true })) {
+      return `${field} is not a valid CSS selector`;
+    }
   }
 
   return "";
@@ -482,7 +480,7 @@ function setCurrentDomainSelectorFromMenu ({ field, label, required }) {
     return;
   }
 
-  if (!isValidCssSelector(selector, !required)) {
+  if (!isValidCssSelector(selector, { allowEmpty: !required })) {
     window.alert(`${label} for ${domain} is not a valid CSS selector.`);
     return;
   }
@@ -615,7 +613,7 @@ function normalizeProcessedRecords (records) {
 
 function createProcessedRecordsMapFromStoredValue (rawRecordsMap) {
   const storedRecordsMap = typeof rawRecordsMap === "string"
-    ? safeJsonParse(rawRecordsMap, {})
+    ? parseStoredJson(rawRecordsMap, {})
     : rawRecordsMap;
   const nextProcessedRecordsByDomain = new Map();
 
@@ -925,29 +923,20 @@ function scheduleSafeRedirect () {
 }
 
 function extractMessageBody (contentElement, domainConfig = getCurrentDomainConfig()) {
-  const clone = contentElement.cloneNode(true);
-
-  clone.querySelectorAll("img[alt]").forEach((imageElement) => {
-    const imageText = imageElement.getAttribute("alt") || "";
-    imageElement.replaceWith(document.createTextNode(imageText));
-  });
-
   const excludeSelector = domainConfig.messageExcludeSelector;
-  if (excludeSelector) {
-    try {
-      clone.querySelectorAll(excludeSelector).forEach((excludedElement) => {
-        excludedElement.remove();
-      });
-    } catch (error) {
-      logWarn("Unable to apply message exclusion selector; continuing without exclusions.", {
-        domain: getCurrentDomainKey(),
-        selector: excludeSelector,
-        error,
-      });
-    }
+  const validExcludeSelector = !excludeSelector || isValidCssSelector(excludeSelector, { root: contentElement });
+
+  if (!validExcludeSelector) {
+    logWarn("Unable to apply message exclusion selector; continuing without exclusions.", {
+      domain: getCurrentDomainKey(),
+      selector: excludeSelector,
+    });
   }
 
-  return (clone.innerText || clone.textContent || "")
+  return extractElementText(contentElement, {
+    excludeSelector: validExcludeSelector ? excludeSelector : "",
+    normalizeWhitespace: false,
+  })
     .replace(/\u00a0/g, " ")
     .trim();
 }
@@ -1025,12 +1014,7 @@ function normalizeMessageContent (content) {
 
 async function hashContent (content) {
   try {
-    const encodedContent = new TextEncoder().encode(content);
-    const hashBuffer = await crypto.subtle.digest("SHA-256", encodedContent);
-
-    return Array.from(new Uint8Array(hashBuffer))
-      .map(byte => byte.toString(16).padStart(2, "0"))
-      .join("");
+    return await sha256Hex(content);
   } catch (error) {
     logError("Unable to hash message content.", error);
     return "";
@@ -1056,12 +1040,7 @@ function getConfiguredApiKey () {
 
 function parseResponseBody (responseText) {
   if (!responseText) return null;
-
-  try {
-    return JSON.parse(responseText);
-  } catch (error) {
-    return responseText;
-  }
+  return parseJsonSafe(responseText, responseText);
 }
 
 function getWebhookHeaders () {
