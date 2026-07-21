@@ -1386,7 +1386,7 @@ function startMonitoring () {
   if (!state.timerId) {
     state.timerId = window.setInterval(scanAndSendMessages, CONFIG.intervalMs);
   }
-  logInfo("Started monitoring.", { runId: state.runId, intervalMs: CONFIG.intervalMs });
+  logInfo("Started monitoring.", { runId: state.runId, intervalMs: formatDurationFromMs(CONFIG.intervalMs) });
 }
 
 function stopMonitoring () {
