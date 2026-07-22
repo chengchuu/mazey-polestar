@@ -21,7 +21,7 @@ const CONFIG = {
   safeRedirectMessageTemplate: "Peace monitor stopped automatically after running continuously for {duration}.",
   filterApiMessageBody: true,
   maxStoredHashes: 5000,
-  enableDebug: true,
+  enableDebug: false,
 };
 
 const WebhookCon = genCustomConsole("[Webhook]");
