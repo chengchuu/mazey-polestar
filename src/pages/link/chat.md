@@ -1,3 +1,8 @@
+index.js
+
+```js
+/* eslint-disable no-unused-vars */
+/* eslint-disable camelcase */
 import React, { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Provider, useDispatch, useSelector } from "react-redux";
@@ -6,8 +11,8 @@ import { CopyToClipboard } from "react-copy-to-clipboard";
 import QRCodeStyling from "qr-code-styling";
 import {
   addStyle, genCustomConsole, getQueryParam, loadScript,
-  mTrim, updateQueryParam, genHashCode, isValidHttpUrl,
-  genStyleString, getBrowserInfo,
+  mTrim, updateQueryParam, genHashCode,
+  isValidHttpUrl, genStyleString, getBrowserInfo,
 } from "mazey";
 import {
   getQueryParamUltimate, isHtmlTag, isValidAnyUrl, isValidENCode,
@@ -15,7 +20,19 @@ import {
 import createLinkStore from "./store";
 import { linkActions, selectLinkState } from "./linkSlice";
 
-const isDebug = getQueryParam("debug") === "on";
+// Test Examples:
+// http://localhost:9202/tiny.html
+// https://www.example.com/tiny
+//  https://www.example.com/tiny
+// www.example.com/tiny
+// ftp://main/sub?id=2333
+// sheeee://hahah/sub?id=num
+// 短消息
+// AAa
+// b
+// <a href="https://www.example.com/tiny" target="_blank">xxx</a><br/>
+// http://www.example.com/tiny/index.html?msg=<a href="https://www.example.com/tiny" target="_blank">xxx</a><br/>
+const isDebug = getQueryParam("debug") === "1";
 const TinyCon = genCustomConsole("[Link]", { showDate: true, enabled: isDebug });
 const linkBaseUrl = "//i.mazey.net";
 const foreignBaseUrl = window.TINY_FOREIGN_BASE_URL;
@@ -25,9 +42,12 @@ const defaultTinyTitle = "备用链接";
 const Tiny = () => {
   const dispatch = useDispatch();
   const {
-    oriLink: stateOriLink,
-    tinyLink: stateTinyLink,
-    queryMsg, copied, showQRCode, loadedLayer,
+    oriLink: ori_link,
+    tinyLink: tiny_link,
+    queryMsg,
+    copied,
+    showQRCode,
+    loadedLayer,
     backupTinyLinks,
   } = useSelector(selectLinkState);
   const ref = useRef(null);
@@ -157,41 +177,41 @@ const Tiny = () => {
   };
 
   const fetchShortLink = async () => {
-    let realOriLink = "";
-    TinyCon.log(`Ori Link ${stateOriLink}`);
-    const trimOriLink = mTrim(stateOriLink);
+    let real_ori_link = "";
+    TinyCon.log(`Ori Link ${ori_link}`);
+    const trimOriLink = mTrim(ori_link);
     const suppleHttp = `http://${trimOriLink}`;
     if (trimOriLink === "") {
       msg("不能为空");
       return;
     } else if (isValidAnyUrl(trimOriLink)) {
-      realOriLink = trimOriLink;
+      real_ori_link = trimOriLink;
     } else if (hashCodeToLink(trimOriLink)) {
       return;
     } else if (isValidHttpUrl(suppleHttp)) {
-      realOriLink = suppleHttp;
+      real_ori_link = suppleHttp;
     } else if (await checkMsg(trimOriLink)) {
-      realOriLink = msgLink;
+      real_ori_link = msgLink;
     } else {
       msg("请输入正确的链接");
       return;
     }
-    dispatch(linkActions.setOriLink(realOriLink));
+    dispatch(linkActions.setOriLink(real_ori_link));
     dispatch(linkActions.setBackupTinyLinks([]));
     dispatch(linkActions.setShowQRCode(false));
-    if (typeof realOriLink === "string" && realOriLink.includes(" ")) {
-      TinyCon.log("Link Before Trim", realOriLink);
-      realOriLink = mTrim(realOriLink);
+    if (typeof real_ori_link === "string" && real_ori_link.includes(" ")) {
+      TinyCon.log("ori_link Before Trim", real_ori_link);
+      real_ori_link = mTrim(real_ori_link);
     }
     loadedLayer && window.layer.load(1);
-    TinyCon.log("Ultimate", realOriLink);
-    const tinyLink = await getTinyLink(realOriLink).then(link => {
+    TinyCon.log("Ultimate", real_ori_link);
+    const tinyLink = await getTinyLink(real_ori_link).then(link => {
       loadedLayer && window.layer.closeAll("loading");
-      const getTinyLink = link;
-      dispatch(linkActions.setTinyLink(getTinyLink));
+      const tiny_link = link;
+      dispatch(linkActions.setTinyLink(tiny_link));
       dispatch(linkActions.setCopied(false));
       msg("成功");
-      return getTinyLink;
+      return tiny_link;
     }).catch(err => {
       loadedLayer && window.layer.closeAll("loading");
       msg("网络错误");
@@ -207,7 +227,7 @@ const Tiny = () => {
     // Backup
     const bakLinks = [];
     if (foreignBaseUrl) {
-      getTinyLink(realOriLink, foreignBaseUrl).then(link => {
+      getTinyLink(real_ori_link, foreignBaseUrl).then(link => {
         if (isValidHttpUrl(link)) {
           bakLinks.push({
             title: defaultTinyTitle,
@@ -216,14 +236,14 @@ const Tiny = () => {
             copied: false,
           });
           dispatch(linkActions.setBackupTinyLinks([...bakLinks]));
-          TinyCon.log("backupTinyLinks (next)", bakLinks);
+          TinyCon.log("backupTinyLinks", backupTinyLinks);
         }
       });
     }
   };
 
-  const inputChange = ({ target: { value: inputOriLink } }) => {
-    dispatch(linkActions.setOriLink(inputOriLink));
+  const inputChange = ({ target: { value: ori_link } }) => {
+    dispatch(linkActions.setOriLink(ori_link));
   };
 
   const handleKeyDown = ({ key }) => {
@@ -240,10 +260,6 @@ const Tiny = () => {
 
   const convertUrlStringToQRCode = url => {
     TinyCon.log("convertUrlStringToQRCode", url);
-    if (!ref.current) {
-      return;
-    }
-    ref.current.replaceChildren();
     const qrCodeParams = {
       width: 200,
       height: 200,
@@ -273,7 +289,7 @@ const Tiny = () => {
   return (
     <div className='tiny-box'>
       <div className='generate'>
-        <input value={stateOriLink}
+        <input value={ori_link}
           onChange={inputChange}
           onKeyDown={handleKeyDown}
           placeholder={queryMsg ? "消息接收成功，复制下面的文字，或者在此输入长链接或短文字" : "请输入长链接"}
@@ -284,12 +300,12 @@ const Tiny = () => {
       <div className='result-show'>
         {/* Short Link */}
         {
-          stateTinyLink && <input value={stateTinyLink} placeholder='请复制短链接' onChange={() => {}} autoFocus={!!queryMsg} />
+          tiny_link && <input value={tiny_link} placeholder='请复制短链接' onChange={() => {}} autoFocus={!!queryMsg} />
         }
         {/* Copy Button */}
         {
-          stateTinyLink
-            ? <CopyToClipboard onCopy={() => dispatch(linkActions.setCopied(true))} text={stateTinyLink}>
+          tiny_link
+            ? <CopyToClipboard onCopy={() => dispatch(linkActions.setCopied(true))} text={tiny_link}>
               <button>复制</button>
             </CopyToClipboard>
             : ""
@@ -299,7 +315,7 @@ const Tiny = () => {
           copied ? <span className='copied'>已复制</span> : ""
         }
         {
-          !stateTinyLink ? <span className='placeholder'>生成的短链接~</span> : ""
+          !tiny_link ? <span className='placeholder'>生成的短链接~</span> : ""
         }
       </div>
       {
@@ -357,3 +373,108 @@ const TinyInit = (selector = "", options = {
 TinyInit("#tiny-box", { isGrayBackground: true });
 
 window.TINY_INIT = TinyInit;
+```
+
+linkSlice.js
+
+```js
+import { createSlice } from "@reduxjs/toolkit";
+
+const initialState = {
+  oriLink: "",
+  tinyLink: "",
+  queryMsg: "",
+  copied: false,
+  showQRCode: false,
+  loadedLayer: false,
+  backupTinyLinks: [],
+};
+
+const linkSlice = createSlice({
+  name: "link",
+  initialState,
+  reducers: {
+    setOriLink: (state, action) => ({
+      ...state,
+      oriLink: action.payload,
+    }),
+    setTinyLink: (state, action) => ({
+      ...state,
+      tinyLink: action.payload,
+    }),
+    setQueryMsg: (state, action) => ({
+      ...state,
+      queryMsg: action.payload,
+    }),
+    setCopied: (state, action) => ({
+      ...state,
+      copied: action.payload,
+    }),
+    setShowQRCode: (state, action) => ({
+      ...state,
+      showQRCode: action.payload,
+    }),
+    setLoadedLayer: (state, action) => ({
+      ...state,
+      loadedLayer: action.payload,
+    }),
+    setBackupTinyLinks: (state, action) => ({
+      ...state,
+      backupTinyLinks: action.payload,
+    }),
+    markBackupTinyCopied: (state, action) => ({
+      ...state,
+      backupTinyLinks: state.backupTinyLinks.map((tiny, index) => (
+        index === action.payload ? { ...tiny, copied: true } : tiny
+      )),
+    }),
+  },
+});
+
+export const linkActions = linkSlice.actions;
+
+export const selectLinkState = state => state.link;
+
+export default linkSlice.reducer;
+```
+
+store.js
+
+```js
+import { configureStore } from "@reduxjs/toolkit";
+
+import linkReducer from "./linkSlice";
+
+const createLinkStore = () => configureStore({
+  reducer: {
+    link: linkReducer,
+  },
+});
+
+export default createLinkStore;
+```
+
+utils.js
+
+```js
+import {
+  getQueryParam, isValidUrl, convertCamelToUnder,
+} from "mazey";
+
+export const getQueryParamUltimate = param => {
+  const underParam = convertCamelToUnder(param);
+  return getQueryParam(param) || getQueryParam(underParam);
+};
+
+export const isHtmlTag = str => {
+  return /<([a-z]+)([^<]+)*(?:>(.*)<\/\1>|\s+\/>)/g.test(str);
+};
+
+export const isValidAnyUrl = url => {
+  return isValidUrl(url);
+};
+
+export const isValidENCode = str => {
+  return /^[a-zA-Z]+$/g.test(str);
+};
+```
