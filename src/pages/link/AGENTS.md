@@ -9,7 +9,7 @@ This directory defines the "link" JavaScript entry for generating short links, b
 - `index.js` is the JavaScript entry point. Webpack resolves it from `./src/pages/${ENTRY}/index.js` when `ENTRY=link`.
 - `index.html` is the compatibility HTML template consumed by `HtmlWebpackPlugin`. It provides `<div id="tiny-box"></div>` as the React mount point and sets `window.TINY_FOREIGN_BASE_URL`.
 - Root scripts:
-  - `npm run dev:link` starts webpack-dev-server with `ENTRY=link` on `127.0.0.1:4131`.
+  - `npm run dev` compiles and serves every maintained JavaScript entry, including `link.js`, on `127.0.0.1:4131`.
   - `npm run build:link` builds the production page with `ENTRY=link`.
 
 ## Key Files

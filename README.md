@@ -26,15 +26,17 @@ npm install mazey-polestar --save
 |------------|----------|
 | Node.js    | v22.22.2 |
 
-### Develop the Link entry
+### Develop library entries
 
-Run the JavaScript development server on `127.0.0.1:4131`:
+Compile and serve every maintained JavaScript library on `127.0.0.1:4131`:
 
 ```bash
-npm run dev:link
+npm run dev
 ```
 
-The sibling `pages` project owns the integrated HTML at <http://127.0.0.1:4130/link/>, and the sibling `mazey.css` project serves `link.css` on port `4132`. Run all three development servers while working on the Link page.
+The server watches `addstyle.js`, `cdn.js`, `confluence.js`, `index.js`, `link.js`, `list.js`, `obfuscator.js`, `webhook.user.js`, and `wordpress.js`. It keeps output in memory and does not serve legacy `tiny.js` or `tiny.css`.
+
+The sibling `pages` project owns the integrated Link HTML at <http://127.0.0.1:4130/link/>, and the sibling `mazey.css` project serves `link.css` on port `4132`. Run all three development servers while working on the Link page.
 
 ## License
 

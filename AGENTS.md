@@ -8,7 +8,7 @@ The files under `archive/wordpress/` are read-only historical material. They are
 
 ## Build, Test, and Development Commands
 
-- `npm run dev:link`: starts `webpack-dev-server` for the `link` entry on `127.0.0.1:4131`. Develop the integrated HTML page from the sibling `pages` project at `127.0.0.1:4130/link/`.
+- `npm run dev`: compiles and serves every maintained source-backed JavaScript library on `127.0.0.1:4131`. Develop the integrated Link HTML from the sibling `pages` project at `127.0.0.1:4130/link/`.
 - `npm run build:link`: builds the production `link` bundle and compatibility HTML into `lib/`.
 - `npm run build:index`, `build:cdn`, `build:obfuscator`: build individual page entries.
 - `npm run build:wordpress`: rebuilds the log-only `lib/wordpress.js` compatibility notice from `src/wordpress.js`.
@@ -24,7 +24,7 @@ JavaScript uses ESLint Standard style with repository overrides: 2-space indenta
 
 ## Testing Guidelines
 
-Run `npm test`, `npm run lint:fix`, and the relevant build. The WordPress regression test keeps the compatibility entry and committed artifact log-only while the legacy source remains outside active build paths. For `webhook`, run `npm run build:webhook` and manually verify metadata, selectors, storage behavior, and endpoint setup in Tampermonkey. For `link`, run `npm run dev:link` with the sibling HTML and CSS development servers, then check `127.0.0.1:4130/link/` in a browser. Name new tests with a `.test.js` suffix.
+Run `npm test`, the no-fix ESLint command, and the relevant build. `npm run lint:fix` writes source files. The WordPress regression test keeps the compatibility entry and committed artifact log-only while the legacy source remains outside active build paths. For `webhook`, run `npm run build:webhook` and manually verify metadata, selectors, storage behavior, and endpoint setup in Tampermonkey. For `link`, run `npm run dev` with the sibling HTML and CSS development servers, then check `127.0.0.1:4130/link/` in a browser. Name new tests with a `.test.js` suffix.
 
 ## Commit & Pull Request Guidelines
 
