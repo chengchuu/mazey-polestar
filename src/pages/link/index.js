@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { Provider, useDispatch, useSelector } from "react-redux";
-import axios from "axios";
 import { CopyToClipboard } from "react-copy-to-clipboard";
 import QRCodeStyling from "qr-code-styling";
 import {
@@ -11,19 +10,21 @@ import {
 } from "mazey";
 import {
   getQueryParamUltimate, isHtmlTag, isValidAnyUrl, isValidENCode,
+  getStringLength,
 } from "./utils";
+import { linkBaseUrl, useGenerateShortLinkMutation } from "./linkApi";
 import createLinkStore from "./store";
 import { linkActions, selectLinkState } from "./linkSlice";
 
-const isDebug = getQueryParam("debug") === "on";
-const TinyCon = genCustomConsole("[Link]", { showDate: true, enabled: isDebug });
-const linkBaseUrl = "//i.mazey.net";
-const foreignBaseUrl = window.TINY_FOREIGN_BASE_URL;
-const libBaseUrl = "//i.mazey.net/lib";
-const QRCodeFav = "https://i.mazey.net/icon/fav/logo-dark-circle-32x32.png";
-const defaultTinyTitle = "备用链接";
 const Tiny = () => {
+  const isDebug = getQueryParam("debug") === "on";
+  const TinyCon = genCustomConsole("[Link]", { showDate: true, enabled: isDebug });
+  const foreignBaseUrl = window.TINY_FOREIGN_BASE_URL;
+  const libBaseUrl = "//i.mazey.net/lib";
+  const QRCodeFav = "https://i.mazey.net/icon/fav/logo-dark-circle-32x32.png";
+  const defaultTinyTitle = "备用链接";
   const dispatch = useDispatch();
+  const [ generateShortLink ] = useGenerateShortLinkMutation();
   const {
     oriLink: stateOriLink,
     tinyLink: stateTinyLink,
@@ -68,22 +69,15 @@ const Tiny = () => {
   };
 
   const getTinyLink = (oriLink, baseUrl) => {
-    const params = {
-      ori_link: oriLink,
-    };
-    const oneTime = getQueryParamUltimate("oneTime");
-    if (oneTime === "1") {
-      Object.assign(params, { one_time: true });
-    }
-    if (baseUrl) {
-      Object.assign(params, { base_url: baseUrl });
-    }
-    return axios.post(`${linkBaseUrl}/api/gee/generate-short-link`, params)
-      .then(res => {
-        const link = res.data.tiny_link;
-        TinyCon.log("Link", link);
-        return link;
-      });
+    const oneTime = getQueryParam("onetime") || getQueryParamUltimate("oneTime");
+    return generateShortLink({
+      oriLink,
+      baseUrl,
+      oneTime: oneTime === "on" || oneTime === "1",
+    }).unwrap().then(link => {
+      TinyCon.log("Link", link);
+      return link;
+    });
   };
 
   const hashCodeToLink = hashCode => {
@@ -93,9 +87,9 @@ const Tiny = () => {
         link = `https:${link}`;
       }
       TinyCon.log("Link", link);
-      loadedLayer && window.layer.confirm(`检测到输入短字符，将跳转至：${link}`, {
+      loadedLayer && window.layer.confirm(`检测到输入短字符，将跳转至：<br />${link}`, {
         title: "提示",
-        btn: ["确认", "取消"],
+        btn: [ "确认", "取消" ],
       }, function () {
         window.open(link);
       }, function () {
@@ -107,10 +101,9 @@ const Tiny = () => {
   };
 
   const convertToMsg = link => {
-    let ok, fail, retLink;
-    const status = new Promise((resolve, reject) => {
+    let ok, retLink;
+    const status = new Promise(resolve => {
       ok = resolve;
-      fail = reject;
     });
     if (!isValidAnyUrl(link)) {
       TinyCon.log("convertToMsg Link", link);
@@ -120,9 +113,9 @@ const Tiny = () => {
         linkForMsg = linkForMsg.replace(/<[^>]+>/g, "");
         isTag = true;
       }
-      loadedLayer && window.layer.confirm(`检测到输入${isTag ? "标签" : "文字"}，将通过短链传递：${linkForMsg}`, {
+      loadedLayer && window.layer.confirm(`检测到输入${isTag ? "标签" : "文字"}，将通过短链传递：<br />${linkForMsg}`, {
         title: "提示",
-        btn: ["确认", "取消"],
+        btn: [ "确认", "取消" ],
       }, function () {
         TinyCon.log("linkForMsg", linkForMsg);
         const enMsg = encodeURIComponent(linkForMsg);
@@ -157,8 +150,9 @@ const Tiny = () => {
   };
 
   const fetchShortLink = async () => {
-    let realOriLink = "";
     TinyCon.log(`Ori Link ${stateOriLink}`);
+    let realOriLink = "";
+    let tinyLink;
     const trimOriLink = mTrim(stateOriLink);
     const suppleHttp = `http://${trimOriLink}`;
     if (trimOriLink === "") {
@@ -176,27 +170,31 @@ const Tiny = () => {
       msg("请输入正确的链接");
       return;
     }
-    dispatch(linkActions.setOriLink(realOriLink));
-    dispatch(linkActions.setBackupTinyLinks([]));
-    dispatch(linkActions.setShowQRCode(false));
     if (typeof realOriLink === "string" && realOriLink.includes(" ")) {
       TinyCon.log("Link Before Trim", realOriLink);
       realOriLink = mTrim(realOriLink);
     }
-    loadedLayer && window.layer.load(1);
+    if (getStringLength(realOriLink) > 500) {
+      msg("链接过长，请输入小于 500 字符的链接");
+      return;
+    }
     TinyCon.log("Ultimate", realOriLink);
-    const tinyLink = await getTinyLink(realOriLink).then(link => {
-      loadedLayer && window.layer.closeAll("loading");
-      const getTinyLink = link;
-      dispatch(linkActions.setTinyLink(getTinyLink));
+    dispatch(linkActions.setOriLink(realOriLink));
+    dispatch(linkActions.setBackupTinyLinks([]));
+    dispatch(linkActions.setShowQRCode(false));
+    loadedLayer && window.layer.load(1);
+    try {
+      tinyLink = await getTinyLink(realOriLink);
+      dispatch(linkActions.setTinyLink(tinyLink));
       dispatch(linkActions.setCopied(false));
+      loadedLayer && window.layer.closeAll("loading");
       msg("成功");
-      return getTinyLink;
-    }).catch(err => {
+    } catch (err) {
       loadedLayer && window.layer.closeAll("loading");
       msg("网络错误");
-      TinyCon.error(err.message);
-    });
+      TinyCon.error(err);
+      return;
+    }
     // QRCode
     if (typeof tinyLink === "string" && tinyLink.includes("http")) {
       dispatch(linkActions.setShowQRCode(true));
@@ -215,9 +213,11 @@ const Tiny = () => {
             area: "全球",
             copied: false,
           });
-          dispatch(linkActions.setBackupTinyLinks([...bakLinks]));
+          dispatch(linkActions.setBackupTinyLinks([ ...bakLinks ]));
           TinyCon.log("backupTinyLinks (next)", bakLinks);
         }
+      }).catch(err => {
+        TinyCon.error(err);
       });
     }
   };
