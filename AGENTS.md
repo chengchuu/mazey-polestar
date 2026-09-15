@@ -8,8 +8,8 @@ The files under `archive/wordpress/` are read-only historical material. They are
 
 ## Build, Test, and Development Commands
 
-- `npm run serve:link`: starts `webpack-dev-server` for the `link` entry on port `9202`.
-- `npm run build:link`: builds the production `link` page into `lib/`.
+- `npm run dev:link`: starts `webpack-dev-server` for the `link` entry on `127.0.0.1:4131`. Develop the integrated HTML page from the sibling `pages` project at `127.0.0.1:4130/link/`.
+- `npm run build:link`: builds the production `link` bundle and compatibility HTML into `lib/`.
 - `npm run build:index`, `build:cdn`, `build:obfuscator`: build individual page entries.
 - `npm run build:wordpress`: rebuilds the log-only `lib/wordpress.js` compatibility notice from `src/wordpress.js`.
 - `npm run build:webhook`: builds `src/webhook.js` to `lib/webhook.user.js` with the Tampermonkey banner.
@@ -24,7 +24,7 @@ JavaScript uses ESLint Standard style with repository overrides: 2-space indenta
 
 ## Testing Guidelines
 
-Run `npm test`, `npm run lint:fix`, and the relevant build. The WordPress regression test keeps the compatibility entry and committed artifact log-only while the legacy source remains outside active build paths. For `webhook`, run `npm run build:webhook` and manually verify metadata, selectors, storage behavior, and endpoint setup in Tampermonkey. For `link`, check `npm run serve:link` in a browser. Name new tests with a `.test.js` suffix.
+Run `npm test`, `npm run lint:fix`, and the relevant build. The WordPress regression test keeps the compatibility entry and committed artifact log-only while the legacy source remains outside active build paths. For `webhook`, run `npm run build:webhook` and manually verify metadata, selectors, storage behavior, and endpoint setup in Tampermonkey. For `link`, run `npm run dev:link` with the sibling HTML and CSS development servers, then check `127.0.0.1:4130/link/` in a browser. Name new tests with a `.test.js` suffix.
 
 ## Commit & Pull Request Guidelines
 

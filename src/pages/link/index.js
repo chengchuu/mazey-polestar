@@ -141,7 +141,7 @@ const Tiny = () => {
     } else if (typeof tempMsgLinkRet === "string" && isValidAnyUrl(tempMsgLinkRet)) {
       msgLink = tempMsgLinkRet;
       ret = true;
-    } else if (typeof tempMsgLinkRet === "string" && tempMsgLinkRet.includes("localhost:9202")) {
+    } else if (typeof tempMsgLinkRet === "string" && tempMsgLinkRet.startsWith(`${location.origin}/`)) {
       // Debug
       msgLink = tempMsgLinkRet;
       ret = true;

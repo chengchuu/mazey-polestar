@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "nvm:use": "nvm use 22",
-    "serve:link": "cross-env ENTRY=link webpack-dev-server --config webpack.config.dev.js",
+    "dev:link": "cross-env ENTRY=link webpack-dev-server --config webpack.config.dev.js",
     "watch:confluence": "cross-env ENTRY=confluence webpack watch --mode=development --config webpack.config.lib.js",
     "build:index": "cross-env ENTRY=index webpack --config webpack.config.prd.js",
     "build:wordpress": "cross-env ENTRY=wordpress webpack --mode=production --config webpack.config.lib.js",

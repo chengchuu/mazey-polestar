@@ -2,14 +2,14 @@
 
 ## Purpose
 
-This directory defines the standalone "link" page for generating short links, backup links, message links, and QR codes. It is built through the shared page webpack config with `ENTRY=link`.
+This directory defines the "link" JavaScript entry for generating short links, backup links, message links, and QR codes. It is built through the shared page webpack config with `ENTRY=link`. The sibling `pages` project owns the integrated development HTML, and the sibling `mazey.css` project owns its stylesheet.
 
 ## Entry Points
 
 - `index.js` is the JavaScript entry point. Webpack resolves it from `./src/pages/${ENTRY}/index.js` when `ENTRY=link`.
-- `index.html` is the HTML template consumed by `HtmlWebpackPlugin`. It provides `<div id="tiny-box"></div>` as the React mount point and sets `window.TINY_FOREIGN_BASE_URL`.
+- `index.html` is the compatibility HTML template consumed by `HtmlWebpackPlugin`. It provides `<div id="tiny-box"></div>` as the React mount point and sets `window.TINY_FOREIGN_BASE_URL`.
 - Root scripts:
-  - `npm run serve:link` starts webpack-dev-server with `ENTRY=link`.
+  - `npm run dev:link` starts webpack-dev-server with `ENTRY=link` on `127.0.0.1:4131`.
   - `npm run build:link` builds the production page with `ENTRY=link`.
 
 ## Key Files
@@ -49,7 +49,7 @@ This directory defines the standalone "link" page for generating short links, ba
 
 ## Component/Data Flow
 
-1. `index.html` loads the generated bundle and exposes runtime config on `window`.
+1. The consuming HTML loads the generated bundle and exposes runtime config on `window`. The compatibility `index.html` supplies the same contract for standalone builds.
 2. `index.js` calls `TinyInit("#tiny-box", { isGrayBackground: true })`.
 3. `TinyInit` finds the DOM node, creates a React root with `createRoot`, creates a page-local Redux store, renders `<Provider store={store}><Tiny /></Provider>`, and optionally injects gray background styles through `mazey`'s `addStyle`.
 4. `Tiny` reads page data from `linkSlice` through `useSelector(selectLinkState)`:
