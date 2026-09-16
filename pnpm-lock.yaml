@@ -15,8 +15,8 @@ importers:
         specifier: ^1.1.3
         version: 1.19.0
       layer-esm:
-        specifier: ^1.0.13
-        version: 1.1.7
+        specifier: ^1.2.3
+        version: 1.2.3
       mazey:
         specifier: ^5.9.1
         version: 5.9.1
@@ -2340,8 +2340,8 @@ packages:
   launch-editor@2.14.1:
     resolution: {integrity: sha512-QWBrQsMpH7gPr965dsKD/3cKWiNoTjpATQf++Xq63N6sKRGMwlVXz41O1IZTMfZQgBctD/K5Zt06+/I6pP6+HA==}
 
-  layer-esm@1.1.7:
-    resolution: {integrity: sha512-uOHz7cPETCYZ379K7Pd8nSQJ3KhQL7aUbEMCkcpkZAszGT4LQoKCD+gsMpnk3OP7HevDxLYnhkPvAmWF8xM0kg==}
+  layer-esm@1.2.3:
+    resolution: {integrity: sha512-p/Luui5eEcNxs6HpWT3qx9Vyyme8/n4G731cUtocp1yt4stQKldkA/a4BcJFl0h0BWrdjByWwkthomnexi8Hxg==}
 
   levn@0.3.0:
     resolution: {integrity: sha512-0OO4y2iOHix2W6ujICbKIaEQXvFQHue65vUG3pb5EUomzPI90z9hsA1VsO/dbIIpC53J8gxM9Q4Oho0jrCM/yA==}
@@ -6202,7 +6202,7 @@ snapshots:
       picocolors: 1.1.1
       shell-quote: 1.10.0
 
-  layer-esm@1.1.7:
+  layer-esm@1.2.3:
     dependencies:
       mazey: 5.9.1
       react: 19.2.8
