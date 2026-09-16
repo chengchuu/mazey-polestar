@@ -196,11 +196,11 @@ const Tiny = () => {
       return;
     }
     // QRCode
-    if (typeof tinyLink === "string" && tinyLink.includes("http")) {
+    if (typeof realOriLink === "string" && realOriLink.includes("http")) {
       dispatch(linkActions.setShowQRCode(true));
       setTimeout(() => {
-        convertUrlStringToQRCode(tinyLink);
-      }, 500);
+        convertUrlStringToQRCode(realOriLink);
+      }, 200);
     }
     // Backup
     const bakLinks = [];

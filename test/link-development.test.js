@@ -102,7 +102,7 @@ test("Sass compilation avoids deprecated APIs and syntax", () => {
   assert.doesNotMatch(sharedStyles, /\bdarken\(/);
 });
 
-test("Link source has no legacy development port", () => {
+test("Link source uses current development and QR code targets", () => {
   const source = fs.readFileSync(
     path.join(projectRoot, "src/pages/link/index.js"),
     "utf8",
@@ -113,5 +113,7 @@ test("Link source has no legacy development port", () => {
   );
   assert.doesNotMatch(source, /localhost:9202/);
   assert.match(source, /tempMsgLinkRet\.startsWith\(`\$\{location\.origin\}\/`\)/);
+  assert.match(source, /convertUrlStringToQRCode\(realOriLink\)/);
+  assert.doesNotMatch(source, /convertUrlStringToQRCode\(tinyLink\)/);
   assert.match(examples, /http:\/\/127\.0\.0\.1:4130\/link\//);
 });
