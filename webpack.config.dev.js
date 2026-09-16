@@ -35,6 +35,7 @@ module.exports = {
         use: ["style-loader", "css-loader", {
           loader: "sass-loader",
           options: {
+            api: "modern",
             implementation: require("sass"),
           },
         }],
