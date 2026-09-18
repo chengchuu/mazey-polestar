@@ -7,7 +7,6 @@
     "lib"
   ],
   "scripts": {
-    "nvm:use": "nvm use 22",
     "dev": "webpack serve --mode development --config webpack.config.dev.js",
     "watch:confluence": "cross-env ENTRY=confluence webpack watch --mode=development --config webpack.config.lib.js",
     "build:index": "cross-env ENTRY=index webpack --config webpack.config.prd.js",
