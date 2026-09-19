@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Webhook Mazey Harness</title>
+  <script>
+    const domainConfig = {
+      "127.0.0.1": {
+        messageContainerSelector: ".message",
+        messageKeySelector: ".key",
+        messageExcludeSelector: ".exclude",
+        messageListScrollSelector: "",
+      },
+    };
+    const values = new Map([
+      ["peace-webhook-domain-config-map", JSON.stringify(domainConfig)],
+      ["peace-webhook-processed-records-by-domain", "{}"],
+      ["peace-webhook-endpoint", "https://example.com/webhook"],
+      ["peace-webhook-api-key", ""],
+    ]);
+
+    window.__requests = [];
+    window.__menus = [];
+    window.__alerts = [];
+    window.__failRequests = true;
+    window.unsafeWindow = window;
+    window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fallback;
+    window.GM_setValue = (key, value) => values.set(key, value);
+    window.GM_registerMenuCommand = (label, callback) => window.__menus.push({ label, callback });
+    window.GM_addValueChangeListener = () => 1;
+    window.GM_xmlhttpRequest = (options) => {
+      window.__requests.push(JSON.parse(options.data));
+      window.setTimeout(() => {
+        options.onload({
+          status: window.__failRequests ? 503 : 200,
+          responseText: window.__failRequests ? "temporarily unavailable" : "OK",
+        });
+      }, 0);
+    };
+    window.alert = message => window.__alerts.push(String(message));
+    window.confirm = () => true;
+  </script>
+</head>
+<body>
+  <article class="message">
+    <span class="key" title="message-key"></span>
+    <div class="body">Alpha&nbsp;<img src="emoji.png" alt="FIRE"> Beta</div>
+    <span class="exclude">SECRET</span>
+  </article>
+  <pre id="results"></pre>
+  <script src="/lib/webhook.user.js"></script>
+  <script>
+    window.addEventListener("DOMContentLoaded", async () => {
+      const waitFor = async predicate => {
+        const deadline = Date.now() + 5000;
+        while (!predicate()) {
+          if (Date.now() > deadline) throw new Error("Timed out waiting for userscript state.");
+          await new Promise(resolve => window.setTimeout(resolve, 10));
+        }
+      };
+
+      const startButton = document.querySelector("[data-peace-webhook-start]");
+      const stopButton = document.querySelector("[data-peace-webhook-stop]");
+      const originalMessage = document.querySelector(".message");
+      const originalHtml = originalMessage.innerHTML;
+
+      startButton.click();
+      await waitFor(() => window.__requests.length === 1 && !window.PEACE_WEBHOOK_DEBUG.getState().scanning);
+      const recordsAfterFailure = window.PEACE_WEBHOOK_DEBUG.getProcessedRecords();
+      stopButton.click();
+
+      window.__failRequests = false;
+      startButton.click();
+      await waitFor(() => window.__requests.length === 2 && !window.PEACE_WEBHOOK_DEBUG.getState().scanning);
+      const recordsAfterSuccess = window.PEACE_WEBHOOK_DEBUG.getProcessedRecords();
+      stopButton.click();
+
+      const exclusionMenu = window.__menus.find(menu => menu.label.startsWith("Set message exclusion selector"));
+      window.prompt = () => "[";
+      exclusionMenu.callback();
+
+      document.querySelector("#results").textContent = JSON.stringify({
+        requests: window.__requests,
+        recordsAfterFailure,
+        recordsAfterSuccess,
+        originalDomUnchanged: originalMessage.innerHTML === originalHtml,
+        originalImagePresent: Boolean(originalMessage.querySelector("img[alt]")),
+        originalExcludedElementPresent: Boolean(originalMessage.querySelector(".exclude")),
+        configDomain: window.PEACE_WEBHOOK_CONFIG.domain,
+        selectors: window.PEACE_WEBHOOK_CONFIG.getSelectors(),
+        debugState: window.PEACE_WEBHOOK_DEBUG.getState(),
+        invalidSelectorRejected: window.__alerts.some(message => message.includes("not a valid CSS selector")),
+        maskRemovedAfterStop: !document.querySelector("#peace-webhook-mask"),
+        titleRestoredAfterStop: document.title === "Webhook Mazey Harness",
+      }, null, 2);
+    });
+  </script>
+</body>
+</html>
