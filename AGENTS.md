@@ -13,6 +13,7 @@ The files under `archive/wordpress/` are read-only historical material. They are
 - `npm run build:index`, `build:cdn`, `build:obfuscator`: build individual page entries.
 - `npm run build:wordpress`: rebuilds the log-only `lib/wordpress.js` compatibility notice from `src/wordpress.js`.
 - `npm run build:webhook`: builds `src/webhook.js` to `lib/webhook.user.js` with the Tampermonkey banner.
+- `npm run build:copy-code`: builds the explicit Copy Code initializer from `src/copy-code.js` to `lib/copy-code.js`.
 - `npm run build:addstyle`, `build:confluence`, `build:list`: build other library-style entries with `webpack.config.lib.js`.
 - `npm run watch:confluence`: watches the `confluence` library entry during development.
 - `npm run build`: prints `Nothing to build!` and does not compile an entry. Select a relevant `build:<entry>` script instead.
