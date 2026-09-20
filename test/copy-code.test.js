@@ -65,6 +65,15 @@ class FakeElement {
     this.attributes.delete(name);
   }
 
+  contains (element) {
+    let current = element;
+    while (current) {
+      if (current === this) return true;
+      current = current.parentElement;
+    }
+    return false;
+  }
+
   querySelectorAll (selector) {
     assert.equal(selector, "code");
     const matches = [];
@@ -159,7 +168,25 @@ function createRuntime ({ clipboard, copyFallback = async () => false, readyStat
   const fallbackOptions = [];
   const warnings = [];
   const observers = [];
+  const timers = new Map();
+  let currentTime = 0;
   let nextMessageIndex = 1;
+  let nextTimerId = 1;
+
+  function advanceTimersByTime (duration) {
+    const targetTime = currentTime + duration;
+    while (true) {
+      const pending = Array.from(timers.entries())
+        .filter(([, timer]) => timer.time <= targetTime)
+        .sort((left, right) => left[1].time - right[1].time)[0];
+      if (!pending) break;
+      const [timerId, timer] = pending;
+      timers.delete(timerId);
+      currentTime = timer.time;
+      timer.callback();
+    }
+    currentTime = targetTime;
+  }
 
   class FakeMutationObserver {
     constructor (callback) {
@@ -196,6 +223,19 @@ function createRuntime ({ clipboard, copyFallback = async () => false, readyStat
     MutationObserver: FakeMutationObserver,
     navigator: clipboard === undefined ? {} : { clipboard },
   };
+  Object.defineProperties(window, {
+    clearTimeout: {
+      value: (timerId) => timers.delete(timerId),
+    },
+    setTimeout: {
+      value: (callback, delay) => {
+        const timerId = nextTimerId;
+        nextTimerId += 1;
+        timers.set(timerId, { callback, time: currentTime + delay });
+        return timerId;
+      },
+    },
+  });
   document.defaultView = window;
   const module = { exports: {} };
   const context = {
@@ -218,11 +258,21 @@ function createRuntime ({ clipboard, copyFallback = async () => false, readyStat
 
   vm.runInNewContext(compiledSource, context, { filename: sourcePath });
 
-  return { closed, document, fallbackCalls, fallbackOptions, messages, observers, warnings, window };
+  return {
+    advanceTimersByTime,
+    closed,
+    document,
+    fallbackCalls,
+    fallbackOptions,
+    messages,
+    observers,
+    warnings,
+    window,
+  };
 }
 
 function click (document, target, options = {}) {
-  return document.dispatch("click", { target, ...options });
+  return document.dispatch("click", { detail: 1, target, ...options });
 }
 
 test("import is inactive and initialization has a reusable cleanup lifecycle", async () => {
@@ -252,9 +302,14 @@ test("import is inactive and initialization has a reusable cleanup lifecycle", a
   const nextCleanup = runtime.window.MAZEY_COPY_CODE();
   cleanup();
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   assert.deepEqual(writes, ["Dockerfile"]);
+
+  click(runtime.document, code);
   nextCleanup();
+  runtime.advanceTimersByTime(400);
+  assert.deepEqual(writes, ["Dockerfile"]);
 });
 
 test("copying preserves exact text content and uses the required Layer message", async () => {
@@ -275,6 +330,10 @@ test("copying preserves exact text content and uses the required Layer message",
     runtime.window.MAZEY_COPY_CODE();
 
     click(runtime.document, code.children[0]);
+    assert.deepEqual(writes, []);
+    runtime.advanceTimersByTime(399);
+    assert.deepEqual(writes, []);
+    runtime.advanceTimersByTime(1);
     await flushPromises();
 
     assert.deepEqual(writes, [value]);
@@ -283,9 +342,65 @@ test("copying preserves exact text content and uses the required Layer message",
     assert.equal(runtime.messages[0].content, "Copied");
     assert.equal(runtime.messages[0].options.icon, 1);
     assert.equal(runtime.messages[0].options.time, 2);
+    assert.equal(runtime.messages[0].options.offset, "20px");
     assert.equal(runtime.messages[0].options.shade, false);
     assert.equal(runtime.messages[0].options.btn, false);
   }
+});
+
+test("later clicks replace or cancel the delayed pointer copy", async () => {
+  const writes = [];
+  const runtime = createRuntime({
+    clipboard: { writeText: async (text) => writes.push(text) },
+  });
+  const code = runtime.document.append(new FakeElement("code", "selectable"));
+  runtime.window.MAZEY_COPY_CODE();
+
+  click(runtime.document, code);
+  runtime.advanceTimersByTime(200);
+  click(runtime.document, code, { detail: 2 });
+  runtime.advanceTimersByTime(400);
+  assert.deepEqual(writes, []);
+
+  click(runtime.document, code);
+  click(runtime.document, code, { ctrlKey: true, detail: 2 });
+  runtime.advanceTimersByTime(400);
+  assert.deepEqual(writes, []);
+
+  click(runtime.document, code);
+  click(runtime.document, code, { detail: 2 });
+  click(runtime.document, code, { detail: 3 });
+  runtime.advanceTimersByTime(400);
+  assert.deepEqual(writes, []);
+
+  const latest = runtime.document.append(new FakeElement("code", "latest"));
+  click(runtime.document, code);
+  runtime.advanceTimersByTime(200);
+  click(runtime.document, latest);
+  runtime.advanceTimersByTime(400);
+  await flushPromises();
+  assert.deepEqual(writes, ["latest"]);
+});
+
+test("non-pointer activation is immediate and detached code does not copy", async () => {
+  const writes = [];
+  const runtime = createRuntime({
+    clipboard: { writeText: async (text) => writes.push(text) },
+  });
+  const code = runtime.document.append(new FakeElement("code", "value"));
+  runtime.window.MAZEY_COPY_CODE();
+
+  click(runtime.document, code);
+  click(runtime.document, code, { detail: 0 });
+  assert.deepEqual(writes, ["value"]);
+  runtime.advanceTimersByTime(400);
+  assert.deepEqual(writes, ["value"]);
+
+  const removed = runtime.document.append(new FakeElement("code", "removed"));
+  click(runtime.document, removed);
+  runtime.document.documentElement.removeChild(removed);
+  runtime.advanceTimersByTime(400);
+  assert.deepEqual(writes, ["value"]);
 });
 
 test("ineligible content and selection gestures do not write", async () => {
@@ -318,6 +433,7 @@ test("ineligible content and selection gestures do not write", async () => {
     getRangeAt: () => ({ intersectsNode: (node) => node === selectable }),
   };
   click(runtime.document, selectable);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   assert.deepEqual(writes, []);
 
@@ -327,6 +443,7 @@ test("ineligible content and selection gestures do not write", async () => {
     getRangeAt: () => ({ intersectsNode: () => false }),
   };
   click(runtime.document, selectable);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   assert.deepEqual(writes, ["selectable"]);
 });
@@ -343,6 +460,7 @@ test("new code elements support delegated pointer and keyboard activation", asyn
   assert.equal(code.getAttribute("role"), "button");
   assert.equal(code.getAttribute("tabindex"), "0");
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   const space = runtime.document.dispatch("keydown", { key: " ", target: code });
   assert.equal(space.defaultPrevented, true);
@@ -371,6 +489,7 @@ test("clipboard failures do not show success and later actions can retry", async
   runtime.window.MAZEY_COPY_CODE();
 
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   assert.equal(attempts, 1);
   assert.deepEqual(runtime.fallbackCalls, []);
@@ -378,6 +497,7 @@ test("clipboard failures do not show success and later actions can retry", async
   assert.equal(runtime.warnings.some((message) => message.includes(copiedText)), false);
 
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   assert.equal(attempts, 2);
   assert.deepEqual(runtime.fallbackCalls, []);
@@ -396,6 +516,7 @@ test("a synchronous native clipboard failure does not use the package fallback",
   runtime.window.MAZEY_COPY_CODE();
 
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
 
   assert.deepEqual(runtime.fallbackCalls, []);
@@ -418,6 +539,7 @@ test("the package fallback copies exact text and shows success", async () => {
   runtime.window.MAZEY_COPY_CODE();
 
   click(runtime.document, code.children[0]);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
 
   assert.deepEqual(copied, [value]);
@@ -444,6 +566,7 @@ test("package fallback failures do not show success or expose copied text", asyn
       runtime.window.MAZEY_COPY_CODE();
 
       click(runtime.document, code);
+      runtime.advanceTimersByTime(400);
       await flushPromises();
 
       assert.deepEqual(runtime.fallbackCalls, [copiedText]);
@@ -464,6 +587,8 @@ test("an unavailable native clipboard uses one pending fallback operation", asyn
   click(runtime.document, code);
   const space = runtime.document.dispatch("keydown", { key: " ", target: code });
   assert.equal(space.defaultPrevented, true);
+  assert.deepEqual(runtime.fallbackCalls, ["value"]);
+  runtime.advanceTimersByTime(400);
   assert.deepEqual(runtime.fallbackCalls, ["value"]);
 
   cleanup();
@@ -531,6 +656,7 @@ test("one pending write blocks races and cleanup suppresses late feedback", asyn
   const cleanup = runtime.window.MAZEY_COPY_CODE();
 
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   click(runtime.document, code);
   const pendingSpace = runtime.document.dispatch("keydown", { key: " ", target: code });
   assert.equal(pendingSpace.defaultPrevented, true);
@@ -549,8 +675,10 @@ test("message replacement and cleanup close only owned indexes", async () => {
   const cleanup = runtime.window.MAZEY_COPY_CODE();
 
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   click(runtime.document, code);
+  runtime.advanceTimersByTime(400);
   await flushPromises();
   assert.deepEqual(runtime.closed, [1]);
   runtime.messages[0].options.end();
@@ -565,6 +693,7 @@ test("message replacement and cleanup close only owned indexes", async () => {
   const feedbackCode = feedbackFailure.document.append(new FakeElement("code", "copied"));
   feedbackFailure.window.MAZEY_COPY_CODE();
   click(feedbackFailure.document, feedbackCode);
+  feedbackFailure.advanceTimersByTime(400);
   await flushPromises();
   assert.match(feedbackFailure.warnings[0], /copy confirmation/);
   assert.doesNotMatch(feedbackFailure.warnings[0], /clipboard/i);

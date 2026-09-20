@@ -1,6 +1,6 @@
 {
   "name": "mazey-polestar",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "A Demo for Webpack Build",
   "main": "lib/index.js",
   "files": [

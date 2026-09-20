@@ -55,12 +55,15 @@ ready, or at DOM readiness if initialization occurs earlier.
 1. Resolve the nearest `<code>` ancestor when a highlighted child is clicked.
 2. Skip code in editable regions or existing interactive controls, such as links
    and buttons, to preserve their behavior. Ignore non-primary or modified clicks.
-3. Skip pointer copying when a noncollapsed selection intersects the code element,
-   preserving deliberate text selection. Unrelated selections should not block it.
+3. Delay a first pointer click by 400 milliseconds. Cancel that pending copy on
+   a second or third click so multi-click text selection remains available. Skip
+   pointer copying when a noncollapsed selection intersects the code element.
+   Unrelated selections should not block it.
 4. Read `textContent` at activation time. Preserve spaces, indentation, line breaks,
    and decoded entities. Skip empty text without clearing the clipboard.
-5. Invoke native `navigator.clipboard.writeText` directly from the user action
-   when available; otherwise start `copy-to-clipboard` from that same action.
+5. After the pointer delay, invoke native `navigator.clipboard.writeText` when
+   available; otherwise start `copy-to-clipboard`. Keep keyboard activation
+   immediate and cancel any pending pointer copy first.
 6. Show success feedback after the native promise resolves or the fallback
    resolves strictly to `true`.
 
@@ -76,9 +79,10 @@ writes automatically.
 ## Feedback and failure handling
 
 Select Layer `msg` with the fixed content `Copied`, the `success` icon, a two-second
-timeout, no buttons, and no shade. Retain its numeric index and use `close` to
-replace only a message owned by this feature. Clear ownership when that specific
-message ends; an older message's end callback must not clear a newer index.
+timeout, a `20px` top offset, no buttons, and no shade. Retain its numeric index
+and use `close` to replace only a message owned by this feature. Clear ownership
+when that specific message ends; an older message's end callback must not clear a
+newer index.
 
 Never pass the copied code into Layer message content, which accepts trusted HTML.
 Do not use `window.layer`, global `closeAll`, or `destroy`, and do not change the
@@ -90,7 +94,8 @@ Clipboard API when available. When it is unavailable, use `copy-to-clipboard`
 4.0.2 and await its boolean result so HTTP pages can use its browser-dependent
 `execCommand("copy")` fallback. Request the `text/plain` format so non-ASCII text
 is written explicitly through its copy event. Do not invoke the package after a
-native rejection.
+native rejection. The accepted pointer delay can cause browsers that require
+`execCommand("copy")` directly inside the click handler to reject the fallback.
 For either path, show no success message on failure, preserve the source content
 and selection, and allow a later explicit user action. Failure reporting is a
 concise console warning without the copied text; a visible failure message is
@@ -105,7 +110,8 @@ unrelated fallback UI, or duplicated Layer option validation.
 Propose focusable, button-like behavior for eligible noninteractive code elements,
 with an accessible copy-action description that retains the code text as context.
 Support Enter and Space, prevent Space scrolling only when handling the copy
-action, and ignore held-key repeats. Preserve an existing meaningful role,
+action, cancel a pending pointer copy before keyboard activation, and ignore
+held-key repeats. Preserve an existing meaningful role,
 accessible name, focus policy, or interactive descendant instead of overwriting it.
 
 Delegated clicks alone do not make dynamically inserted elements keyboard
@@ -158,10 +164,13 @@ Regression coverage should demonstrate:
 - Empty code, editable regions, interactive controls, and selection gestures do
   not trigger unintended writes.
 - Newly inserted code supports pointer and keyboard activation.
+- A single pointer click waits 400 milliseconds; second and third clicks cancel
+  it, while Enter and Space copy immediately.
 - Import alone is inactive; repeated initialization does not duplicate copying.
 - A missing native API uses the package fallback; only its `true` result shows
   `Copied`, while pending, denied, false, thrown, or rejected operations do not.
-- Successful writes show the exact message and two-second duration through Layer.
+- Successful writes show the exact message, two-second duration, and `20px` top
+  offset through Layer.
 - Rapid interactions do not create competing writes or close unrelated messages.
 - Cleanup removes owned behavior and prevents late feedback; reinitialization
   works without interference from older registrations.

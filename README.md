@@ -24,10 +24,12 @@ Load `lib/copy-code.js` in a browser and initialize copying explicitly:
 const stopCopyCode = window.MAZEY_COPY_CODE();
 ```
 
-Eligible `<code>` elements become keyboard accessible. Activating one with a
-primary click, Enter, or Space copies its exact `textContent`, including spaces,
-line breaks, decoded entities, and nested highlighting text. A successful copy
-shows `Copied` for two seconds. Code inside editable or interactive content is
+Eligible `<code>` elements become keyboard accessible. A primary click copies
+after 400 milliseconds; a second or third click during that interval cancels the
+copy so the browser can select text. Enter and Space copy immediately. Copies
+preserve exact `textContent`, including spaces, line breaks, decoded entities,
+and nested highlighting text. A successful copy shows `Copied` for two seconds,
+centered 20 pixels from the top. Code inside editable or interactive content is
 left unchanged, and selecting text inside a code element does not copy it.
 
 Call the returned cleanup function to remove owned listeners and accessibility
@@ -42,7 +44,9 @@ The native Clipboard API is preferred when available. On HTTP pages and other
 contexts where that API is unavailable, the library uses `copy-to-clipboard`'s
 browser-dependent `execCommand("copy")` fallback with an explicit plain-text
 format. It does not retry a rejected native write through the fallback, and
-failed writes never show `Copied`. Layer
+failed writes never show `Copied`. Pointer copying starts after the 400-millisecond
+delay, so browsers that require `execCommand("copy")` directly inside the click
+handler may reject the HTTP fallback. Layer
 feedback injects runtime styles, so the consuming page's Content Security Policy
 must allow those styles or provide its existing nonce through `layer-esm`.
 
