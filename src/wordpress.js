@@ -1,0 +1,1 @@
+console.log("[mazey-polestar] WordPress runtime has been migrated to the Polestar theme.");
