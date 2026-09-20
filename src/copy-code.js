@@ -28,6 +28,7 @@ const INTERACTIVE_ROLES = new Set([
   "treeitem",
 ]);
 const WARNING_PREFIX = "[mazey-polestar]";
+const POINTER_COPY_DELAY_MS = 400;
 
 let activeRegistration = null;
 
@@ -194,6 +195,7 @@ function showCopiedMessage (registration) {
     messageIndex = msg("Copied", {
       icon: 1,
       time: 2,
+      offset: "20px",
       shade: false,
       btn: false,
       end: () => {
@@ -204,6 +206,21 @@ function showCopiedMessage (registration) {
   } catch (error) {
     warn("Unable to show the copy confirmation.");
   }
+}
+
+function cancelPendingPointerCopy (registration) {
+  if (registration.pointerCopyTimer === null) return;
+  registration.document.defaultView.clearTimeout(registration.pointerCopyTimer);
+  registration.pointerCopyTimer = null;
+}
+
+function schedulePointerCopy (registration, code, target) {
+  cancelPendingPointerCopy(registration);
+  registration.pointerCopyTimer = registration.document.defaultView.setTimeout(() => {
+    registration.pointerCopyTimer = null;
+    if (!registration.document.documentElement.contains(code)) return;
+    activateCode(registration, code, target);
+  }, POINTER_COPY_DELAY_MS);
 }
 
 function isActive (registration) {
@@ -252,10 +269,21 @@ function activateCode (registration, code, target = code) {
 }
 
 function handleClick (registration, event) {
-  if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
   const code = findCodeElement(event.target);
-  if (!code || selectionIntersectsCode(registration.document, code)) return;
-  activateCode(registration, code, event.target);
+  if (!code) return;
+  if (event.detail > 1) {
+    cancelPendingPointerCopy(registration);
+    return;
+  }
+  if (event.button !== 0 || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (selectionIntersectsCode(registration.document, code)) return;
+  if (!isEligibleCode(registration, code, event.target) || code.textContent === "") return;
+  if (event.detail === 0) {
+    cancelPendingPointerCopy(registration);
+    activateCode(registration, code, event.target);
+    return;
+  }
+  schedulePointerCopy(registration, code, event.target);
 }
 
 function handleKeyDown (registration, event) {
@@ -264,6 +292,7 @@ function handleKeyDown (registration, event) {
 
   const code = findCodeElement(event.target);
   if (!code) return;
+  cancelPendingPointerCopy(registration);
   if (activateCode(registration, code, event.target) && (event.key === " " || event.key === "Spacebar")) {
     event.preventDefault();
   }
@@ -318,6 +347,7 @@ function initializeCopyCode () {
     cleaned: false,
     started: false,
     writePending: false,
+    pointerCopyTimer: null,
     messageIndex: null,
     observer: null,
     ownedAttributes: new Map(),
@@ -332,6 +362,7 @@ function initializeCopyCode () {
     document.removeEventListener("DOMContentLoaded", registration.onReady);
     document.removeEventListener("click", registration.onClick);
     document.removeEventListener("keydown", registration.onKeyDown);
+    cancelPendingPointerCopy(registration);
     if (registration.observer) registration.observer.disconnect();
     for (const code of Array.from(registration.ownedAttributes.keys())) {
       restoreOwnedAttributes(registration, code);
