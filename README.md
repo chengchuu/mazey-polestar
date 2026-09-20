@@ -38,8 +38,11 @@ Code message:
 stopCopyCode();
 ```
 
-Clipboard writes require a secure browser context and user permission. The
-library does not use a legacy clipboard fallback or retry failed writes. Layer
+The native Clipboard API is preferred when available. On HTTP pages and other
+contexts where that API is unavailable, the library uses `copy-to-clipboard`'s
+browser-dependent `execCommand("copy")` fallback with an explicit plain-text
+format. It does not retry a rejected native write through the fallback, and
+failed writes never show `Copied`. Layer
 feedback injects runtime styles, so the consuming page's Content Security Policy
 must allow those styles or provide its existing nonce through `layer-esm`.
 

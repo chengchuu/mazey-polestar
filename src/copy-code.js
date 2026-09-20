@@ -1,3 +1,4 @@
+import copyToClipboard from "copy-to-clipboard";
 import { close, msg } from "layer-esm";
 
 const COPY_ATTRIBUTES = {
@@ -219,24 +220,30 @@ function activateCode (registration, code, target = code) {
 
   const view = registration.document.defaultView;
   const clipboard = view && view.navigator && view.navigator.clipboard;
-  if (!clipboard || typeof clipboard.writeText !== "function") {
-    warn("Unable to copy because the Clipboard API is unavailable.");
-    return true;
-  }
-
   registration.writePending = true;
   let write;
+  let usesFallback = false;
   try {
-    write = clipboard.writeText(text);
+    if (clipboard && typeof clipboard.writeText === "function") {
+      write = clipboard.writeText(text);
+    } else {
+      usesFallback = true;
+      write = copyToClipboard(text, { format: "text/plain" });
+    }
   } catch (error) {
     registration.writePending = false;
     warn("Unable to copy to the clipboard.");
     return true;
   }
 
-  Promise.resolve(write).then(() => {
+  Promise.resolve(write).then((copied) => {
     registration.writePending = false;
-    if (isActive(registration)) showCopiedMessage(registration);
+    if (!isActive(registration)) return;
+    if (usesFallback && copied !== true) {
+      warn("Unable to copy to the clipboard.");
+      return;
+    }
+    showCopiedMessage(registration);
   }, () => {
     registration.writePending = false;
     if (isActive(registration)) warn("Unable to copy to the clipboard.");
