@@ -151,10 +151,12 @@ async function flushPromises () {
   await Promise.resolve();
 }
 
-function createRuntime ({ clipboard, readyState = "complete", throwMessage = false } = {}) {
+function createRuntime ({ clipboard, copyFallback = async () => false, readyState = "complete", throwMessage = false } = {}) {
   const document = new FakeDocument(readyState);
   const messages = [];
   const closed = [];
+  const fallbackCalls = [];
+  const fallbackOptions = [];
   const warnings = [];
   const observers = [];
   let nextMessageIndex = 1;
@@ -201,15 +203,22 @@ function createRuntime ({ clipboard, readyState = "complete", throwMessage = fal
     exports: module.exports,
     module,
     require: (request) => {
-      assert.equal(request, "layer-esm");
-      return layer;
+      if (request === "layer-esm") return layer;
+      if (request === "copy-to-clipboard") {
+        return (text, options) => {
+          fallbackCalls.push(text);
+          fallbackOptions.push(options);
+          return copyFallback(text, options);
+        };
+      }
+      throw new Error(`Unexpected import: ${request}`);
     },
     window,
   };
 
   vm.runInNewContext(compiledSource, context, { filename: sourcePath });
 
-  return { closed, document, messages, observers, warnings, window };
+  return { closed, document, fallbackCalls, fallbackOptions, messages, observers, warnings, window };
 }
 
 function click (document, target, options = {}) {
@@ -269,6 +278,7 @@ test("copying preserves exact text content and uses the required Layer message",
     await flushPromises();
 
     assert.deepEqual(writes, [value]);
+    assert.deepEqual(runtime.fallbackCalls, []);
     assert.equal(runtime.messages.length, 1);
     assert.equal(runtime.messages[0].content, "Copied");
     assert.equal(runtime.messages[0].options.icon, 1);
@@ -363,21 +373,103 @@ test("clipboard failures do not show success and later actions can retry", async
   click(runtime.document, code);
   await flushPromises();
   assert.equal(attempts, 1);
+  assert.deepEqual(runtime.fallbackCalls, []);
   assert.equal(runtime.messages.length, 0);
   assert.equal(runtime.warnings.some((message) => message.includes(copiedText)), false);
 
   click(runtime.document, code);
   await flushPromises();
   assert.equal(attempts, 2);
+  assert.deepEqual(runtime.fallbackCalls, []);
+});
 
-  const unavailable = createRuntime();
-  const unavailableCode = unavailable.document.append(new FakeElement("code", "value"));
-  unavailable.window.MAZEY_COPY_CODE();
-  click(unavailable.document, unavailableCode);
-  const unavailableSpace = unavailable.document.dispatch("keydown", { key: " ", target: unavailableCode });
-  assert.equal(unavailableSpace.defaultPrevented, true);
-  assert.equal(unavailable.messages.length, 0);
-  assert.match(unavailable.warnings[0], /Clipboard API is unavailable/);
+test("a synchronous native clipboard failure does not use the package fallback", async () => {
+  const copiedText = "private copied value";
+  const runtime = createRuntime({
+    clipboard: {
+      writeText: () => {
+        throw new Error(copiedText);
+      },
+    },
+  });
+  const code = runtime.document.append(new FakeElement("code", copiedText));
+  runtime.window.MAZEY_COPY_CODE();
+
+  click(runtime.document, code);
+  await flushPromises();
+
+  assert.deepEqual(runtime.fallbackCalls, []);
+  assert.equal(runtime.messages.length, 0);
+  assert.equal(runtime.warnings.length, 1);
+  assert.equal(runtime.warnings[0].includes(copiedText), false);
+});
+
+test("the package fallback copies exact text and shows success", async () => {
+  const copied = [];
+  const value = "  <div>你好, Polestar 🚀</div>\n";
+  const runtime = createRuntime({
+    copyFallback: async (text) => {
+      copied.push(text);
+      return true;
+    },
+  });
+  const code = runtime.document.append(new FakeElement("code"));
+  code.appendChild(new FakeElement("span", value));
+  runtime.window.MAZEY_COPY_CODE();
+
+  click(runtime.document, code.children[0]);
+  await flushPromises();
+
+  assert.deepEqual(copied, [value]);
+  assert.deepEqual(runtime.fallbackCalls, [value]);
+  assert.equal(runtime.fallbackOptions.length, 1);
+  assert.equal(runtime.fallbackOptions[0].format, "text/plain");
+  assert.equal(runtime.messages.length, 1);
+  assert.equal(runtime.messages[0].content, "Copied");
+  assert.equal(runtime.messages[0].options.time, 2);
+});
+
+test("package fallback failures do not show success or expose copied text", async (t) => {
+  const copiedText = "private fallback value";
+  const failures = [
+    ["false result", async () => false],
+    ["rejected operation", async () => { throw new Error(copiedText); }],
+    ["thrown operation", () => { throw new Error(copiedText); }],
+  ];
+
+  for (const [name, copyFallback] of failures) {
+    await t.test(name, async () => {
+      const runtime = createRuntime({ copyFallback });
+      const code = runtime.document.append(new FakeElement("code", copiedText));
+      runtime.window.MAZEY_COPY_CODE();
+
+      click(runtime.document, code);
+      await flushPromises();
+
+      assert.deepEqual(runtime.fallbackCalls, [copiedText]);
+      assert.equal(runtime.messages.length, 0);
+      assert.equal(runtime.warnings.length, 1);
+      assert.equal(runtime.warnings[0].includes(copiedText), false);
+    });
+  }
+});
+
+test("an unavailable native clipboard uses one pending fallback operation", async () => {
+  const deferred = createDeferred();
+  const runtime = createRuntime({ copyFallback: () => deferred.promise });
+  const code = runtime.document.append(new FakeElement("code", "value"));
+  const cleanup = runtime.window.MAZEY_COPY_CODE();
+
+  click(runtime.document, code);
+  click(runtime.document, code);
+  const space = runtime.document.dispatch("keydown", { key: " ", target: code });
+  assert.equal(space.defaultPrevented, true);
+  assert.deepEqual(runtime.fallbackCalls, ["value"]);
+
+  cleanup();
+  deferred.resolve(true);
+  await flushPromises();
+  assert.equal(runtime.messages.length, 0);
 });
 
 test("mutations update owned labels and respect attributes changed by the page", () => {

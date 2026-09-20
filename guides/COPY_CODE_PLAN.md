@@ -23,10 +23,10 @@ library entries to `lib/<ENTRY>.js`. Follow the browser-global registration patt
 in `src/addstyle.js`. Keep the source as an ES module and use root named imports
 from `layer-esm`.
 
-The project already declares `layer-esm`; the previously inspected installed
-version is 1.2.3. Its `msg` helper returns a numeric index, accepts the `success`
-icon, and measures `time` in seconds. Verify the installed contract again when
-implementation begins. No new dependency or React integration layer is proposed.
+The project declares `layer-esm` 1.2.3 for feedback and `copy-to-clipboard`
+4.0.2 as the direct HTTP fallback dependency. Layer's `msg` helper returns a
+numeric index, accepts the `success` icon, and measures `time` in seconds. The
+fallback package returns `Promise<boolean>`. No React integration layer is used.
 
 The package publishes `lib`, and generated artifacts are committed. The root
 `build` script is currently a placeholder; building the dedicated entry is required.
@@ -59,8 +59,10 @@ ready, or at DOM readiness if initialization occurs earlier.
    preserving deliberate text selection. Unrelated selections should not block it.
 4. Read `textContent` at activation time. Preserve spaces, indentation, line breaks,
    and decoded entities. Skip empty text without clearing the clipboard.
-5. Invoke native `navigator.clipboard.writeText` directly from the user action.
-6. Show success feedback only after the clipboard promise resolves.
+5. Invoke native `navigator.clipboard.writeText` directly from the user action
+   when available; otherwise start `copy-to-clipboard` from that same action.
+6. Show success feedback after the native promise resolves or the fallback
+   resolves strictly to `true`.
 
 Do not use `innerHTML`, strip tags with regular expressions, or trim the copied
 value. Literal markup represented as text, such as escaped `<div>`, remains part
@@ -83,12 +85,16 @@ Do not use `window.layer`, global `closeAll`, or `destroy`, and do not change th
 page's global Layer theme or configuration. A simple message uses polite live
 status semantics and should not take focus from the code element.
 
-Clipboard writes require a secure context and can be denied by browser or iframe
-policy. Handle missing clipboard capability and rejected writes at that boundary:
-show no success message, preserve the source content and selection, and allow a
-later explicit user action. Proposed initial failure reporting is a concise
-console warning without the copied text; a visible failure message is outside
-the confirmed requirement.
+Clipboard writes can be denied by browser or iframe policy. Prefer the native
+Clipboard API when available. When it is unavailable, use `copy-to-clipboard`
+4.0.2 and await its boolean result so HTTP pages can use its browser-dependent
+`execCommand("copy")` fallback. Request the `text/plain` format so non-ASCII text
+is written explicitly through its copy event. Do not invoke the package after a
+native rejection.
+For either path, show no success message on failure, preserve the source content
+and selection, and allow a later explicit user action. Failure reporting is a
+concise console warning without the copied text; a visible failure message is
+outside the confirmed requirement.
 
 Keep clipboard failure handling separate from Layer rendering. Do not report a
 successful copy as failed because feedback rendering throws. Avoid broad catches,
@@ -112,8 +118,8 @@ loops, and disconnect on cleanup. Verify focus visibility in the consuming page.
 - `copy-code.js` uses an action-oriented name that matches `MAZEY_COPY_CODE`.
 - Explicit initialization provides lifecycle control and avoids activating on
   import. Automatic activation is outside the agreed contract.
-- Native clipboard support keeps the implementation small. Legacy clipboard
-  fallbacks are deferred unless a concrete browser or HTTP requirement emerges.
+- Native clipboard support remains preferred. The direct `copy-to-clipboard`
+  dependency owns the legacy HTTP fallback; prompt fallback remains disabled.
 - Layer provides the requested feedback through its existing imperative API.
   Its React and styled-components runtime increases the generated bundle size;
   inspect the built artifact rather than assuming a named import eliminates that
@@ -131,17 +137,17 @@ clipboard formats are deferred.
 1. Recheck repository guidance, installed Layer APIs, and Git status.
 2. Add `src/copy-code.js` with initialization, copy handling, owned feedback, and
    cleanup. Keep unrelated entries and existing user changes intact.
-3. Add `build:copy-code` to `package.json`, following the existing production
-   library build convention with `ENTRY=copy-code`.
+3. Add the dedicated build command and direct `copy-to-clipboard` dependency to
+   `package.json`.
 4. Add focused regression coverage in `test/copy-code.test.js` using the existing
    Node.js test runner and controlled DOM, clipboard, and Layer boundaries.
 5. Document initialization, cleanup, text semantics, and browser requirements in
    `README.md`; add the dedicated command to `AGENTS.md` if needed.
-6. Generate `lib/copy-code.js` through its build command. Include any generated
-   license notices referenced by the artifact. Never hand-edit generated files.
+6. Generate `lib/copy-code.js` through its build command and confirm the build
+   does not create a license sidecar. Never hand-edit generated files.
 
-No bundler migration, dependency upgrade, lockfile rewrite, package identity
-change, workflow change, or publication is part of this feature plan.
+No bundler migration, unrelated dependency upgrade, package identity change,
+workflow change, or publication is part of this feature plan.
 
 ## Validation and acceptance
 
@@ -153,7 +159,8 @@ Regression coverage should demonstrate:
   not trigger unintended writes.
 - Newly inserted code supports pointer and keyboard activation.
 - Import alone is inactive; repeated initialization does not duplicate copying.
-- A pending, denied, or unavailable clipboard write never shows `Copied`.
+- A missing native API uses the package fallback; only its `true` result shows
+  `Copied`, while pending, denied, false, thrown, or rejected operations do not.
 - Successful writes show the exact message and two-second duration through Layer.
 - Rapid interactions do not create competing writes or close unrelated messages.
 - Cleanup removes owned behavior and prevents late feedback; reinitialization
@@ -161,10 +168,11 @@ Regression coverage should demonstrate:
 
 After implementation, run `npm run build:copy-code`, `npm run test`, the repository's
 no-fix ESLint check, `npm pack --dry-run`, and `git diff --check`. Inspect the actual
-packed artifact and exercise its global initializer in a browser. Test real
-clipboard success and denial, keyboard focus, dynamic content, and notification
-behavior in supported browsers; mocked tests cannot prove browser permissions,
-CSP compatibility, or screen-reader announcements.
+packed artifact and exercise its global initializer in a browser. Test native
+success and denial on HTTPS, package fallback on an insecure HTTP origin,
+keyboard focus, dynamic content, and notification behavior; mocked tests cannot
+prove browser permissions, fallback support, CSP compatibility, or screen-reader
+announcements.
 
 These are future validation steps. No runtime tests or builds are required for
 creating this plan file.
