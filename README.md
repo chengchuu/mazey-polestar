@@ -25,7 +25,7 @@ const stopCopyCode = window.MAZEY_COPY_CODE();
 ```
 
 Eligible `<code>` elements become keyboard accessible. A primary click copies
-after 400 milliseconds; a second or third click during that interval cancels the
+after 300 milliseconds; a second or third click during that interval cancels the
 copy so the browser can select text. Enter and Space copy immediately. Copies
 preserve exact `textContent`, including spaces, line breaks, decoded entities,
 and nested highlighting text. A successful copy shows `Copied` for two seconds,
@@ -44,7 +44,7 @@ The native Clipboard API is preferred when available. On HTTP pages and other
 contexts where that API is unavailable, the library uses `copy-to-clipboard`'s
 browser-dependent `execCommand("copy")` fallback with an explicit plain-text
 format. It does not retry a rejected native write through the fallback, and
-failed writes never show `Copied`. Pointer copying starts after the 400-millisecond
+failed writes never show `Copied`. Pointer copying starts after the 300-millisecond
 delay, so browsers that require `execCommand("copy")` directly inside the click
 handler may reject the HTTP fallback. Layer
 feedback injects runtime styles, so the consuming page's Content Security Policy

@@ -55,7 +55,7 @@ ready, or at DOM readiness if initialization occurs earlier.
 1. Resolve the nearest `<code>` ancestor when a highlighted child is clicked.
 2. Skip code in editable regions or existing interactive controls, such as links
    and buttons, to preserve their behavior. Ignore non-primary or modified clicks.
-3. Delay a first pointer click by 400 milliseconds. Cancel that pending copy on
+3. Delay a first pointer click by 300 milliseconds. Cancel that pending copy on
    a second or third click so multi-click text selection remains available. Skip
    pointer copying when a noncollapsed selection intersects the code element.
    Unrelated selections should not block it.
@@ -164,7 +164,7 @@ Regression coverage should demonstrate:
 - Empty code, editable regions, interactive controls, and selection gestures do
   not trigger unintended writes.
 - Newly inserted code supports pointer and keyboard activation.
-- A single pointer click waits 400 milliseconds; second and third clicks cancel
+- A single pointer click waits 300 milliseconds; second and third clicks cancel
   it, while Enter and Space copy immediately.
 - Import alone is inactive; repeated initialization does not duplicate copying.
 - A missing native API uses the package fallback; only its `true` result shows

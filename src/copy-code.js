@@ -28,7 +28,7 @@ const INTERACTIVE_ROLES = new Set([
   "treeitem",
 ]);
 const WARNING_PREFIX = "[mazey-polestar]";
-const POINTER_COPY_DELAY_MS = 400;
+const POINTER_COPY_DELAY_MS = 300;
 
 let activeRegistration = null;
 
