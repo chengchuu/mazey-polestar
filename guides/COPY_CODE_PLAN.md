@@ -79,7 +79,7 @@ writes automatically.
 ## Feedback and failure handling
 
 Select Layer `msg` with the fixed content `Copied`, the `success` icon, a two-second
-timeout, a `20px` top offset, no buttons, and no shade. Retain its numeric index
+timeout, the `t` top position, no buttons, and no shade. Retain its numeric index
 and use `close` to replace only a message owned by this feature. Clear ownership
 when that specific message ends; an older message's end callback must not clear a
 newer index.
@@ -169,8 +169,8 @@ Regression coverage should demonstrate:
 - Import alone is inactive; repeated initialization does not duplicate copying.
 - A missing native API uses the package fallback; only its `true` result shows
   `Copied`, while pending, denied, false, thrown, or rejected operations do not.
-- Successful writes show the exact message, two-second duration, and `20px` top
-  offset through Layer.
+- Successful writes show the exact message, two-second duration, and `t` top
+  position through Layer.
 - Rapid interactions do not create competing writes or close unrelated messages.
 - Cleanup removes owned behavior and prevents late feedback; reinitialization
   works without interference from older registrations.
