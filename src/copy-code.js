@@ -195,7 +195,7 @@ function showCopiedMessage (registration) {
     messageIndex = msg("Copied", {
       icon: 1,
       time: 2,
-      offset: "20px",
+      offset: "t",
       shade: false,
       btn: false,
       end: () => {
