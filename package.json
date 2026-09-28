@@ -20,6 +20,7 @@
     "build:webhook": "cross-env ENTRY=webhook webpack --mode=production --config webpack.config.lib.js",
     "build:confluence": "cross-env ENTRY=confluence webpack --mode=production --config webpack.config.lib.js",
     "build:list": "cross-env ENTRY=list webpack --mode=production --config webpack.config.lib.js",
+    "build:redirect": "cross-env ENTRY=redirect webpack --mode=production --config webpack.config.lib.js",
     "build": "echo 'Nothing to build!' && exit 0",
     "lint:fix": "eslint ./src/**/*.js --ext 'js' --fix",
     "test": "node --test test/*.test.js"
