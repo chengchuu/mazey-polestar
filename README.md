@@ -29,7 +29,7 @@ after 300 milliseconds; a second or third click during that interval cancels the
 copy so the browser can select text. Enter and Space copy immediately. Copies
 preserve exact `textContent`, including spaces, line breaks, decoded entities,
 and nested highlighting text. A successful copy shows `Copied` for two seconds,
-centered 20 pixels from the top. Code inside editable or interactive content is
+centered at the top of the viewport. Code inside editable or interactive content is
 left unchanged, and selecting text inside a code element does not copy it.
 
 Call the returned cleanup function to remove owned listeners and accessibility
