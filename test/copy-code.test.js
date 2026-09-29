@@ -342,7 +342,7 @@ test("copying preserves exact text content and uses the required Layer message",
     assert.equal(runtime.messages[0].content, "Copied");
     assert.equal(runtime.messages[0].options.icon, 1);
     assert.equal(runtime.messages[0].options.time, 2);
-    assert.equal(runtime.messages[0].options.offset, "20px");
+    assert.equal(runtime.messages[0].options.offset, "t");
     assert.equal(runtime.messages[0].options.shade, false);
     assert.equal(runtime.messages[0].options.btn, false);
   }

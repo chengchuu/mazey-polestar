@@ -29,7 +29,7 @@ after 300 milliseconds; a second or third click during that interval cancels the
 copy so the browser can select text. Enter and Space copy immediately. Copies
 preserve exact `textContent`, including spaces, line breaks, decoded entities,
 and nested highlighting text. A successful copy shows `Copied` for two seconds,
-centered 20 pixels from the top. Code inside editable or interactive content is
+centered at the top of the viewport. Code inside editable or interactive content is
 left unchanged, and selecting text inside a code element does not copy it.
 
 Call the returned cleanup function to remove owned listeners and accessibility
@@ -75,6 +75,25 @@ not executed again. A later explicit call can retry a failed operation. The
 target executes as third-party code and must be trusted by the caller. Content
 Security Policy can block it, in which case the function returns `false`.
 
+## Redirect warning page
+
+`lib/redirect.js` initializes the sibling `pages` project's `/redirect/` page
+when loaded as a deferred script. It expects the `redirect`, `redirect-status`,
+`redirect-destination`, and `redirect-continue` element IDs from that HTML.
+Supply exactly one nonempty, percent-encoded `url` query parameter. Navigation
+requires the user to activate the destination link or Continue; initialization never redirects.
+
+Validation uses Mazey's `isValidUrl()` unchanged. This accepts FTP and
+host-qualified file URLs but rejects ordinary `file:///path`, `mailto:`, and
+`tel:` URLs. Matching custom and executable schemes may be accepted. Acceptance
+does not indicate safety or guarantee browser support. Query destinations may
+appear in history and logs.
+
+Run the three sibling development servers and open
+<http://127.0.0.1:4130/redirect/?url=https%3A%2F%2Fexample.com>.
+Refresh after JavaScript or CSS changes. Build the committed artifact with
+`npm run build:redirect`. The page has no backend dependency.
+
 ## Contributing
 
 ### Development Environment
@@ -91,7 +110,7 @@ Compile and serve the configured development entries on `127.0.0.1:4131`:
 npm run dev
 ```
 
-The server watches `addstyle.js`, `cdn.js`, `confluence.js`, `index.js`, `link.js`, `list.js`, `obfuscator.js`, `webhook.user.js`, and `wordpress.js`. It keeps output in memory and does not serve legacy `tiny.js` or `tiny.css`.
+The server watches `addstyle.js`, `cdn.js`, `confluence.js`, `index.js`, `link.js`, `list.js`, `obfuscator.js`, `redirect.js`, `webhook.user.js`, and `wordpress.js`. It keeps output in memory and does not serve legacy `tiny.js` or `tiny.css`.
 
 Build the Ping Load library artifact separately with `npm run build:ping-load`.
 Build the Copy Code library artifact with `npm run build:copy-code`.
