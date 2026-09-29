@@ -1,3 +1,5 @@
+@use "sass:color";
+
 %m-pointer {
     cursor: pointer;
 }
@@ -141,7 +143,7 @@
     }
     /* 滑块颜色 */
     &::-webkit-scrollbar-thumb {
-        background-color:darken(#EEEEEE, 10%); // green;
+        background-color: color.adjust(#EEEEEE, $lightness: -10%); // green;
         -webkit-border-radius: 2em;
         -moz-border-radius: 2em;
         border-radius:2em;

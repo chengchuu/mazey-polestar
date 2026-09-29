@@ -19,7 +19,7 @@ import { linkActions, selectLinkState } from "./linkSlice";
 const Tiny = () => {
   const isDebug = getQueryParam("debug") === "on";
   const TinyCon = genCustomConsole("[Link]", { showDate: true, enabled: isDebug });
-  const foreignBaseUrl = window.TINY_FOREIGN_BASE_URL;
+  const foreignBaseUrl = window.LINK_FOREIGN_BASE_URL || window.TINY_FOREIGN_BASE_URL || "";
   const libBaseUrl = "//i.mazey.net/lib";
   const QRCodeFav = "https://i.mazey.net/icon/fav/logo-dark-circle-32x32.png";
   const defaultTinyTitle = "备用链接";
@@ -141,7 +141,7 @@ const Tiny = () => {
     } else if (typeof tempMsgLinkRet === "string" && isValidAnyUrl(tempMsgLinkRet)) {
       msgLink = tempMsgLinkRet;
       ret = true;
-    } else if (typeof tempMsgLinkRet === "string" && tempMsgLinkRet.includes("localhost:9202")) {
+    } else if (typeof tempMsgLinkRet === "string" && tempMsgLinkRet.startsWith(`${location.origin}/`)) {
       // Debug
       msgLink = tempMsgLinkRet;
       ret = true;
@@ -196,11 +196,11 @@ const Tiny = () => {
       return;
     }
     // QRCode
-    if (typeof tinyLink === "string" && tinyLink.includes("http")) {
+    if (typeof realOriLink === "string" && realOriLink.includes("http")) {
       dispatch(linkActions.setShowQRCode(true));
       setTimeout(() => {
-        convertUrlStringToQRCode(tinyLink);
-      }, 500);
+        convertUrlStringToQRCode(realOriLink);
+      }, 200);
     }
     // Backup
     const bakLinks = [];
@@ -354,6 +354,9 @@ const TinyInit = (selector = "", options = {
   }
 };
 
+// Legacy Initialization for Tiny Box
 TinyInit("#tiny-box", { isGrayBackground: true });
-
 window.TINY_INIT = TinyInit;
+
+// Current Initialization
+window.LINK_INIT = TinyInit;

@@ -17,7 +17,6 @@ test("WordPress compatibility entry and artifact remain log-only", () => {
 
 test("legacy WordPress source remains outside active build paths", () => {
   const packageJson = require(path.join(projectRoot, "package.json"));
-  const npmIgnore = fs.readFileSync(path.join(projectRoot, ".npmignore"), "utf8");
 
   assert.equal(
     packageJson.scripts["build:wordpress"],
@@ -27,7 +26,8 @@ test("legacy WordPress source remains outside active build paths", () => {
   assert.equal(fs.existsSync(path.join(projectRoot, "archive/wordpress/index.js")), true);
   assert.equal(fs.existsSync(path.join(projectRoot, "archive/wordpress/previous.js")), true);
   assert.equal(fs.existsSync(path.join(projectRoot, "archive/wordpress/README.md")), true);
-  assert.match(npmIgnore, /^archive\/$/m);
+  assert.deepEqual(packageJson.files, ["lib"]);
+  assert.equal(fs.existsSync(path.join(projectRoot, ".npmignore")), false);
   assert.equal(packageJson.dependencies.fingerprintjs2, undefined);
   assert.equal(packageJson.dependencies["mazey-wordpress-utils"], undefined);
 });

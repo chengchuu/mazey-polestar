@@ -74,6 +74,7 @@ module.exports = {
           {
             loader: "sass-loader",
             options: {
+              api: "modern",
               // Prefer `dart-sass`
               implementation: require("sass"),
             },

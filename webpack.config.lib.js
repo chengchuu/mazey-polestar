@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const MinimizerPlugin = require("minimizer-webpack-plugin");
 const webpack = require("webpack");
 const { genCustomConsole } = require("mazey");
 const { userscriptHeaders } = require("./config/userscript");
@@ -51,13 +52,26 @@ const config = {
       },
     ],
   },
+  optimization: {
+    minimizer: [
+      new MinimizerPlugin({
+        minimizerOptions: {
+          compress: {
+            passes: 2,
+          },
+          format: {
+            comments: false,
+          },
+        },
+        extractComments: false,
+      }),
+    ],
+  },
   plugins,
 };
 
 if (userscriptHeaders[ENTRY]) {
-  config.optimization = {
-    minimize: false,
-  };
+  config.optimization.minimize = false;
 }
 
 module.exports = config;
