@@ -19,6 +19,7 @@ This guide reflects the current userscript implementation.
   - [Show configured domains](#show-configured-domains)
   - [Clear processed records](#clear-processed-records)
 - [Starting and Stopping](#starting-and-stopping)
+  - [Automatic start](#automatic-start)
   - [Start](#start)
   - [Stop](#stop)
 - [Message Processing](#message-processing)
@@ -372,6 +373,38 @@ Use this when previously delivered messages should be processed again.
 
 A low-opacity control appears in the bottom-right corner of the page.
 
+### Automatic start
+
+Auto-start is optional and configured separately for each hostname. To enable it:
+
+1. Open the Tampermonkey menu and choose **Set auto-start delay for <hostname>**.
+2. Enter a whole number of seconds from `1` to `2147483`, such as `10`.
+3. Click **OK**. If monitoring is stopped, a new countdown begins immediately.
+
+The setting persists in userscript storage. After each page refresh, the
+countdown begins when the userscript initializes. Saving another valid delay
+while stopped replaces the pending countdown. Saving while monitoring is
+running changes the setting for the next page load without restarting monitoring.
+
+Empty or invalid input disables auto-start and cancels the pending countdown.
+Zero, negative numbers, decimals, nonnumeric text, and values above the limit
+are invalid. **Cancel** leaves the setting unchanged. If storage fails, the
+script reports the failure and preserves the current setting and countdown.
+
+**Start** starts monitoring immediately and cancels the countdown. **Stop** is
+also available during the countdown; it cancels that attempt without clearing
+the saved delay. Stopping monitoring does not schedule another automatic start.
+
+When the countdown expires, the script attempts to start once. Invalid selector
+configuration leaves monitoring stopped, logs a warning, and does not show an
+alert or retry. The seven-day safety timer begins only when monitoring starts.
+
+Background tabs and suspended browsers can delay timers. The delay does not
+guarantee that dynamically loaded messages are ready. Each open tab operates
+independently; refresh other tabs to load a changed setting. There is no global
+auto-start value. Removing selector configuration does not clear the separately
+saved delay; disable it through the auto-start menu when needed.
+
 ### Start
 
 Click **Start** to:
@@ -695,6 +728,7 @@ Example result:
   scanning: false,
   runId: 1,
   hasTimer: true,
+  hasAutoStartTimer: false,
   hasSafeRedirectTimer: true,
   safeRedirectAfterMs: 604800000,
   filterApiMessageBody: true,
