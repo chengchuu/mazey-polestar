@@ -1,3 +1,7 @@
+/**
+ * Historical WordPress runtime snapshot.
+ * This file is not built or maintained; the Polestar theme owns the migrated behavior.
+ */
 import { loadScript, isSafePWAEnv } from "mazey";
 import { hideHeaderInTOC, hideSidebar } from "mazey-wordpress-utils";
 import { Nav, Style, Container, Address, setLocal } from "./previous";

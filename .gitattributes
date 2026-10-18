@@ -1,2 +1,7 @@
+archive/** linguist-detectable=false
+guides/** linguist-detectable=false
+config/** linguist-detectable=false
+scripts/** linguist-detectable=false
+test/** linguist-detectable=false
 *.sh text eol=lf
 *.bash text eol=lf

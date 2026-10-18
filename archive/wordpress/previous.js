@@ -1,3 +1,7 @@
+/**
+ * Historical WordPress runtime snapshot.
+ * This file is not built or maintained; the Polestar theme owns the migrated behavior.
+ */
 /* eslint-disable max-len */
 import { getDomain, getLocalStorage, setLocalStorage } from "mazey";
 
