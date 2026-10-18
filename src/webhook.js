@@ -32,6 +32,7 @@ const API_KEY_STORAGE_KEY = "peace-webhook-api-key";
 const INSTALL_FLAG = "__PEACE_WEBHOOK_SCRIPT_INSTALLED__";
 const DEBUG_GLOBAL_KEY = "PEACE_WEBHOOK_DEBUG";
 const CONFIG_GLOBAL_KEY = "PEACE_WEBHOOK_CONFIG";
+const AFTER_SCAN_STORAGE_PREFIX = "peace-webhook-after-scan:";
 const CONTROL_CONTAINER_ID = "peace-webhook-controls";
 const MASK_ID = "peace-webhook-mask";
 const TITLE_PREFIX = "[Webhook Running]";
@@ -48,6 +49,7 @@ const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z]+/g;
 const SPECIFIC_CHARACTERS_REGEXP = /[()]+/g;
 const domainConfigMap = new Map();
 const domainAfterScanMap = new Map();
+const savedAfterScanMap = new Map();
 
 const state = {
   running: false,
@@ -148,7 +150,57 @@ function syncDebugHelpers () {
 }
 
 function getAfterScanForDomain (domain = getCurrentDomainKey()) {
-  return domainAfterScanMap.get(domain) || CONFIG.afterScan;
+  return domainAfterScanMap.get(domain) || savedAfterScanMap.get(domain) || CONFIG.afterScan;
+}
+
+function compileAfterScan (source) {
+  // Keep native async syntax inside a string so Babel cannot transform the constructor.
+  // Compilation validates the body without executing user code.
+  // eslint-disable-next-line no-new-func
+  const AsyncFunction = new Function("return Object.getPrototypeOf(async function () {}).constructor;")();
+  return new AsyncFunction("context", `"use strict";\n${source}`);
+}
+
+function loadSavedAfterScan () {
+  const domain = getCurrentDomainKey();
+  const source = getStoredValue(AFTER_SCAN_STORAGE_PREFIX + domain, "", false);
+  savedAfterScanMap.delete(domain);
+  if (source === "") return;
+
+  try {
+    if (typeof source !== "string") throw new TypeError("After-scan source must be a string.");
+    savedAfterScanMap.set(domain, compileAfterScan(source));
+  } catch (error) {
+    logWarn("Unable to compile the saved after-scan script; using default behavior.", error);
+  }
+}
+
+function setAfterScanFromMenu () {
+  const domain = getCurrentDomainKey();
+  const key = AFTER_SCAN_STORAGE_PREFIX + domain;
+  const source = window.prompt(
+    `After-scan script body for ${domain}. Enter one line; use context and await directly. Leave empty to clear the saved script. Only enter trusted code.`,
+    getStoredValue(key, "", false),
+  );
+  if (source === null) return;
+
+  let callback = null;
+  if (source.trim()) {
+    try {
+      callback = compileAfterScan(source);
+    } catch (error) {
+      window.alert("After-scan script could not be compiled. The saved setting was not changed.");
+      return;
+    }
+  }
+
+  if (!setStoredValue(key, callback ? source : "", false)) {
+    window.alert("Unable to save the after-scan script in userscript storage.");
+    return;
+  }
+  if (callback) savedAfterScanMap.set(domain, callback);
+  else savedAfterScanMap.delete(domain);
+  window.alert(callback ? `After-scan script saved for ${domain}.` : `Saved after-scan script cleared for ${domain}.`);
 }
 
 function exposeConfigApi () {
@@ -168,7 +220,7 @@ function exposeConfigApi () {
 
         if (callback === null) {
           domainAfterScanMap.delete(domain);
-          logInfo("Restored default after-scan behavior.", { domain });
+          logInfo("Cleared temporary after-scan override.", { domain });
           return;
         }
 
@@ -583,6 +635,7 @@ function registerMenuCommands () {
     });
   });
   GM_registerMenuCommand(`Show configuration for ${domain}`, showCurrentDomainConfigFromMenu);
+  GM_registerMenuCommand(`Set after-scan script for ${domain}`, setAfterScanFromMenu);
   GM_registerMenuCommand(`Remove configuration for ${domain}`, removeCurrentDomainConfigFromMenu);
   GM_registerMenuCommand("Show configured domains", showConfiguredDomainsFromMenu);
   GM_registerMenuCommand(`Clear processed records for ${domain}`, clearCurrentDomainProcessedRecordsFromMenu);
@@ -1424,6 +1477,7 @@ function install () {
   window[INSTALL_FLAG] = true;
   logInfo("Installing webhook monitor.");
   loadDomainConfigMap();
+  loadSavedAfterScan();
   loadProcessedRecordsByDomain();
   registerStorageChangeListeners();
   syncDebugHelpers();

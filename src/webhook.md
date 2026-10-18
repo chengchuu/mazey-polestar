@@ -506,7 +506,67 @@ The returned object is a read-only snapshot. Selectors should be changed through
 
 `afterScan` runs after an active scan finishes.
 
-Set a callback:
+To preserve a customization across page refreshes, choose **Set after-scan script
+for <hostname>** in the Tampermonkey menu. This optional setting stores a
+JavaScript function body separately for the current hostname.
+
+For example, to scroll the page to the bottom after each scan:
+
+1. Open the page you want to monitor.
+2. Open Tampermonkey's menu and select **Set after-scan script for <hostname>**.
+3. Paste the following single-line body into the prompt. Do not include Markdown
+   fences, surrounding quotes, or a `context => { ... }` wrapper.
+
+   ```js
+   window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+   ```
+
+4. Click **OK** to save. Click **Start** on the page when you are ready to monitor.
+
+The browser prompt has a single-line input. Separate statements with semicolons;
+do not paste code that relies on line breaks, such as `//` comments or multiline
+template literals. Use `/* ... */` comments and escaped `\n` in strings instead.
+
+Alternatively, paste this body to click a “Load more” button after each scan.
+Replace `button.load-more` with the page's actual button selector:
+
+```js
+document.querySelector("button.load-more")?.click();
+```
+
+To inspect the scan results instead, paste:
+
+```js
+console.log("Scan completed:", context);
+```
+
+Each saved body replaces the previous saved body for that hostname. To remove
+it, open the same menu command, clear the input, and click **OK**.
+
+The body receives the same `context` described below and supports `await`.
+Saving or loading it validates its syntax without executing it. After a refresh,
+it runs only after a scan; saving it does not start monitoring. Invalid syntax
+or a storage failure leaves the previous setting unchanged. Cancel leaves it
+unchanged; an empty or whitespace-only value removes the saved script.
+
+Only enter trusted code. The script executes in the userscript environment, not
+an isolated sandbox, and can access page data. Source is preserved, but variables
+from a previous page session are not. Dynamic compilation may be restricted by
+the browser or userscript environment. If a saved script cannot be compiled,
+the script logs a warning and uses the existing default behavior. A callback
+that never finishes keeps the scan pending.
+
+Menu edits apply to the current page immediately; refresh other open tabs to
+load the saved setting. Removing the domain's selector configuration does not
+remove its separately saved after-scan script; clear it through this menu.
+
+The callback is selected in this order:
+
+1. A temporary function assigned through the console API.
+2. The saved script for the current hostname.
+3. The existing default behavior, including configured message-list scrolling.
+
+Set a temporary callback:
 
 ```js
 PEACE_WEBHOOK_CONFIG.afterScan = context => {
@@ -574,9 +634,14 @@ PEACE_WEBHOOK_CONFIG.afterScan = () => {
 PEACE_WEBHOOK_CONFIG.afterScan = null;
 ```
 
-The default behavior scrolls the element matched by `messageListScrollSelector`.
+Setting `null` clears the temporary override. The saved script then applies, if
+configured. To restore default scrolling, also clear the saved script through
+the Tampermonkey menu. The default behavior scrolls the element matched by
+`messageListScrollSelector`.
 
-The custom callback is runtime-only and is not persisted after the page reloads.
+Console-assigned callbacks are runtime-only and disappear after a page reload.
+The console setter accepts only functions or `null`; persistent source is
+configured through the menu.
 
 ### Read the current callback
 
@@ -584,7 +649,7 @@ The custom callback is runtime-only and is not persisted after the page reloads.
 PEACE_WEBHOOK_CONFIG.afterScan
 ```
 
-The result is either:
+This reads the temporary override, not the saved script. The result is either:
 
 ```text
 function
