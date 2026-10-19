@@ -19,6 +19,7 @@ This guide reflects the current userscript implementation.
   - [Show configured domains](#show-configured-domains)
   - [Clear processed records](#clear-processed-records)
 - [Starting and Stopping](#starting-and-stopping)
+  - [Automatic start](#automatic-start)
   - [Start](#start)
   - [Stop](#stop)
 - [Message Processing](#message-processing)
@@ -372,6 +373,38 @@ Use this when previously delivered messages should be processed again.
 
 A low-opacity control appears in the bottom-right corner of the page.
 
+### Automatic start
+
+Auto-start is optional and configured separately for each hostname. To enable it:
+
+1. Open the Tampermonkey menu and choose **Set auto-start delay for <hostname>**.
+2. Enter a whole number of seconds from `1` to `2147483`, such as `10`.
+3. Click **OK**. If monitoring is stopped, a new countdown begins immediately.
+
+The setting persists in userscript storage. After each page refresh, the
+countdown begins when the userscript initializes. Saving another valid delay
+while stopped replaces the pending countdown. Saving while monitoring is
+running changes the setting for the next page load without restarting monitoring.
+
+Empty or invalid input disables auto-start and cancels the pending countdown.
+Zero, negative numbers, decimals, nonnumeric text, and values above the limit
+are invalid. **Cancel** leaves the setting unchanged. If storage fails, the
+script reports the failure and preserves the current setting and countdown.
+
+**Start** starts monitoring immediately and cancels the countdown. **Stop** is
+also available during the countdown; it cancels that attempt without clearing
+the saved delay. Stopping monitoring does not schedule another automatic start.
+
+When the countdown expires, the script attempts to start once. Invalid selector
+configuration leaves monitoring stopped, logs a warning, and does not show an
+alert or retry. The seven-day safety timer begins only when monitoring starts.
+
+Background tabs and suspended browsers can delay timers. The delay does not
+guarantee that dynamically loaded messages are ready. Each open tab operates
+independently; refresh other tabs to load a changed setting. There is no global
+auto-start value. Removing selector configuration does not clear the separately
+saved delay; disable it through the auto-start menu when needed.
+
 ### Start
 
 Click **Start** to:
@@ -506,7 +539,67 @@ The returned object is a read-only snapshot. Selectors should be changed through
 
 `afterScan` runs after an active scan finishes.
 
-Set a callback:
+To preserve a customization across page refreshes, choose **Set after-scan script
+for <hostname>** in the Tampermonkey menu. This optional setting stores a
+JavaScript function body separately for the current hostname.
+
+For example, to scroll the page to the bottom after each scan:
+
+1. Open the page you want to monitor.
+2. Open Tampermonkey's menu and select **Set after-scan script for <hostname>**.
+3. Paste the following single-line body into the prompt. Do not include Markdown
+   fences, surrounding quotes, or a `context => { ... }` wrapper.
+
+   ```js
+   window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+   ```
+
+4. Click **OK** to save. Click **Start** on the page when you are ready to monitor.
+
+The browser prompt has a single-line input. Separate statements with semicolons;
+do not paste code that relies on line breaks, such as `//` comments or multiline
+template literals. Use `/* ... */` comments and escaped `\n` in strings instead.
+
+Alternatively, paste this body to click a “Load more” button after each scan.
+Replace `button.load-more` with the page's actual button selector:
+
+```js
+document.querySelector("button.load-more")?.click();
+```
+
+To inspect the scan results instead, paste:
+
+```js
+console.log("Scan completed:", context);
+```
+
+Each saved body replaces the previous saved body for that hostname. To remove
+it, open the same menu command, clear the input, and click **OK**.
+
+The body receives the same `context` described below and supports `await`.
+Saving or loading it validates its syntax without executing it. After a refresh,
+it runs only after a scan; saving it does not start monitoring. Invalid syntax
+or a storage failure leaves the previous setting unchanged. Cancel leaves it
+unchanged; an empty or whitespace-only value removes the saved script.
+
+Only enter trusted code. The script executes in the userscript environment, not
+an isolated sandbox, and can access page data. Source is preserved, but variables
+from a previous page session are not. Dynamic compilation may be restricted by
+the browser or userscript environment. If a saved script cannot be compiled,
+the script logs a warning and uses the existing default behavior. A callback
+that never finishes keeps the scan pending.
+
+Menu edits apply to the current page immediately; refresh other open tabs to
+load the saved setting. Removing the domain's selector configuration does not
+remove its separately saved after-scan script; clear it through this menu.
+
+The callback is selected in this order:
+
+1. A temporary function assigned through the console API.
+2. The saved script for the current hostname.
+3. The existing default behavior, including configured message-list scrolling.
+
+Set a temporary callback:
 
 ```js
 PEACE_WEBHOOK_CONFIG.afterScan = context => {
@@ -574,9 +667,14 @@ PEACE_WEBHOOK_CONFIG.afterScan = () => {
 PEACE_WEBHOOK_CONFIG.afterScan = null;
 ```
 
-The default behavior scrolls the element matched by `messageListScrollSelector`.
+Setting `null` clears the temporary override. The saved script then applies, if
+configured. To restore default scrolling, also clear the saved script through
+the Tampermonkey menu. The default behavior scrolls the element matched by
+`messageListScrollSelector`.
 
-The custom callback is runtime-only and is not persisted after the page reloads.
+Console-assigned callbacks are runtime-only and disappear after a page reload.
+The console setter accepts only functions or `null`; persistent source is
+configured through the menu.
 
 ### Read the current callback
 
@@ -584,7 +682,7 @@ The custom callback is runtime-only and is not persisted after the page reloads.
 PEACE_WEBHOOK_CONFIG.afterScan
 ```
 
-The result is either:
+This reads the temporary override, not the saved script. The result is either:
 
 ```text
 function
@@ -630,6 +728,7 @@ Example result:
   scanning: false,
   runId: 1,
   hasTimer: true,
+  hasAutoStartTimer: false,
   hasSafeRedirectTimer: true,
   safeRedirectAfterMs: 604800000,
   filterApiMessageBody: true,

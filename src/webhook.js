@@ -32,6 +32,8 @@ const API_KEY_STORAGE_KEY = "peace-webhook-api-key";
 const INSTALL_FLAG = "__PEACE_WEBHOOK_SCRIPT_INSTALLED__";
 const DEBUG_GLOBAL_KEY = "PEACE_WEBHOOK_DEBUG";
 const CONFIG_GLOBAL_KEY = "PEACE_WEBHOOK_CONFIG";
+const AFTER_SCAN_STORAGE_PREFIX = "peace-webhook-after-scan:";
+const AUTO_START_STORAGE_PREFIX = "peace-webhook-auto-start:";
 const CONTROL_CONTAINER_ID = "peace-webhook-controls";
 const MASK_ID = "peace-webhook-mask";
 const TITLE_PREFIX = "[Webhook Running]";
@@ -48,12 +50,14 @@ const USERNAME_REGEXP = /(^|[^\w])@[A-Za-z]+/g;
 const SPECIFIC_CHARACTERS_REGEXP = /[()]+/g;
 const domainConfigMap = new Map();
 const domainAfterScanMap = new Map();
+const savedAfterScanMap = new Map();
 
 const state = {
   running: false,
   scanning: false,
   runId: 0,
   timerId: null,
+  autoStartTimerId: null,
   safeRedirectTimerId: null,
   originalTitle: document.title,
   processedRecordsByDomain: new Map(),
@@ -89,6 +93,7 @@ function getDebugStateSnapshot () {
     scanning: state.scanning,
     runId: state.runId,
     hasTimer: Boolean(state.timerId),
+    hasAutoStartTimer: state.autoStartTimerId !== null,
     hasSafeRedirectTimer: Boolean(state.safeRedirectTimerId),
     safeRedirectAfterMs: CONFIG.safeRedirectAfterMs,
     filterApiMessageBody: CONFIG.filterApiMessageBody,
@@ -148,7 +153,102 @@ function syncDebugHelpers () {
 }
 
 function getAfterScanForDomain (domain = getCurrentDomainKey()) {
-  return domainAfterScanMap.get(domain) || CONFIG.afterScan;
+  return domainAfterScanMap.get(domain) || savedAfterScanMap.get(domain) || CONFIG.afterScan;
+}
+
+function compileAfterScan (source) {
+  // Keep native async syntax inside a string so Babel cannot transform the constructor.
+  // Compilation validates the body without executing user code.
+  // eslint-disable-next-line no-new-func
+  const AsyncFunction = new Function("return Object.getPrototypeOf(async function () {}).constructor;")();
+  return new AsyncFunction("context", `"use strict";\n${source}`);
+}
+
+function parseAutoStartSeconds (value) {
+  if (typeof value !== "string" || !/^\d+$/.test(value.trim())) return null;
+  const seconds = Number(value.trim());
+  return Number.isInteger(seconds) && seconds >= 1 && seconds <= 2147483 ? seconds : null;
+}
+
+function clearAutoStartTimer () {
+  if (state.autoStartTimerId === null) return;
+  window.clearTimeout(state.autoStartTimerId);
+  state.autoStartTimerId = null;
+}
+
+function scheduleAutoStart () {
+  clearAutoStartTimer();
+  const seconds = parseAutoStartSeconds(getStoredValue(
+    AUTO_START_STORAGE_PREFIX + getCurrentDomainKey(), "", false,
+  ));
+  if (!state.running && seconds !== null) {
+    state.autoStartTimerId = window.setTimeout(() => {
+      state.autoStartTimerId = null;
+      startMonitoring(true);
+    }, seconds * 1000);
+  }
+  updateControls();
+}
+
+function setAutoStartFromMenu () {
+  const domain = getCurrentDomainKey();
+  const key = AUTO_START_STORAGE_PREFIX + domain;
+  const value = window.prompt(
+    `Auto-start delay in seconds for ${domain} (1–2147483, whole seconds). Empty or invalid input disables auto-start.`,
+    getStoredValue(key, "", false),
+  );
+  if (value === null) return;
+  const seconds = parseAutoStartSeconds(value);
+  if (!setStoredValue(key, seconds === null ? "" : String(seconds), false)) {
+    window.alert("Unable to save the auto-start delay in userscript storage.");
+    return;
+  }
+  scheduleAutoStart();
+  window.alert(seconds === null
+    ? `Auto-start disabled for ${domain}.`
+    : `Auto-start delay saved for ${domain}: ${seconds} seconds.`);
+}
+
+function loadSavedAfterScan () {
+  const domain = getCurrentDomainKey();
+  const source = getStoredValue(AFTER_SCAN_STORAGE_PREFIX + domain, "", false);
+  savedAfterScanMap.delete(domain);
+  if (source === "") return;
+
+  try {
+    if (typeof source !== "string") throw new TypeError("After-scan source must be a string.");
+    savedAfterScanMap.set(domain, compileAfterScan(source));
+  } catch (error) {
+    logWarn("Unable to compile the saved after-scan script; using default behavior.", error);
+  }
+}
+
+function setAfterScanFromMenu () {
+  const domain = getCurrentDomainKey();
+  const key = AFTER_SCAN_STORAGE_PREFIX + domain;
+  const source = window.prompt(
+    `After-scan script body for ${domain}. Enter one line; use context and await directly. Leave empty to clear the saved script. Only enter trusted code.`,
+    getStoredValue(key, "", false),
+  );
+  if (source === null) return;
+
+  let callback = null;
+  if (source.trim()) {
+    try {
+      callback = compileAfterScan(source);
+    } catch (error) {
+      window.alert("After-scan script could not be compiled. The saved setting was not changed.");
+      return;
+    }
+  }
+
+  if (!setStoredValue(key, callback ? source : "", false)) {
+    window.alert("Unable to save the after-scan script in userscript storage.");
+    return;
+  }
+  if (callback) savedAfterScanMap.set(domain, callback);
+  else savedAfterScanMap.delete(domain);
+  window.alert(callback ? `After-scan script saved for ${domain}.` : `Saved after-scan script cleared for ${domain}.`);
 }
 
 function exposeConfigApi () {
@@ -168,7 +268,7 @@ function exposeConfigApi () {
 
         if (callback === null) {
           domainAfterScanMap.delete(domain);
-          logInfo("Restored default after-scan behavior.", { domain });
+          logInfo("Cleared temporary after-scan override.", { domain });
           return;
         }
 
@@ -583,6 +683,8 @@ function registerMenuCommands () {
     });
   });
   GM_registerMenuCommand(`Show configuration for ${domain}`, showCurrentDomainConfigFromMenu);
+  GM_registerMenuCommand(`Set after-scan script for ${domain}`, setAfterScanFromMenu);
+  GM_registerMenuCommand(`Set auto-start delay for ${domain}`, setAutoStartFromMenu);
   GM_registerMenuCommand(`Remove configuration for ${domain}`, removeCurrentDomainConfigFromMenu);
   GM_registerMenuCommand("Show configured domains", showConfiguredDomainsFromMenu);
   GM_registerMenuCommand(`Clear processed records for ${domain}`, clearCurrentDomainProcessedRecordsFromMenu);
@@ -826,9 +928,10 @@ function updateControls () {
 
   state.startButton.style.display = state.running ? "none" : "inline-flex";
   state.startButton.disabled = state.running;
-  state.stopButton.style.display = state.running ? "inline-flex" : "none";
-  state.stopButton.disabled = !state.running;
-  state.stopButton.style.opacity = state.running ? "0.05" : "0.01";
+  const canStop = state.running || state.autoStartTimerId !== null;
+  state.stopButton.style.display = canStop ? "inline-flex" : "none";
+  state.stopButton.disabled = !canStop;
+  state.stopButton.style.opacity = canStop ? "0.05" : "0.01";
 }
 
 function createMask () {
@@ -1356,7 +1459,9 @@ async function scanAndSendMessages () {
   }
 }
 
-function startMonitoring () {
+function startMonitoring (automatic = false) {
+  clearAutoStartTimer();
+  updateControls();
   if (state.running) {
     logInfo("Start ignored because monitoring is already running.", { runId: state.runId });
     return;
@@ -1369,7 +1474,9 @@ function startMonitoring () {
       domain,
       error: domainConfigError,
     });
-    window.alert(`Cannot start monitoring on ${domain}: ${domainConfigError}. Configure selectors from the userscript menu.`);
+    if (automatic !== true) {
+      window.alert(`Cannot start monitoring on ${domain}: ${domainConfigError}. Configure selectors from the userscript menu.`);
+    }
     return;
   }
 
@@ -1390,6 +1497,7 @@ function startMonitoring () {
 }
 
 function stopMonitoring () {
+  clearAutoStartTimer();
   if (state.running || state.scanning) {
     state.runId += 1;
   }
@@ -1424,13 +1532,14 @@ function install () {
   window[INSTALL_FLAG] = true;
   logInfo("Installing webhook monitor.");
   loadDomainConfigMap();
+  loadSavedAfterScan();
   loadProcessedRecordsByDomain();
   registerStorageChangeListeners();
   syncDebugHelpers();
   exposeConfigApi();
   registerMenuCommands();
   createControls();
-  updateControls();
+  scheduleAutoStart();
   logInfo("Installed webhook monitor.");
 }
 
