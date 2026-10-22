@@ -14,6 +14,7 @@ The files under `archive/wordpress/` are read-only historical material. They are
 - `npm run build:wordpress`: rebuilds the log-only `lib/wordpress.js` compatibility notice from `src/wordpress.js`.
 - `npm run build:webhook`: builds `src/webhook.js` to `lib/webhook.user.js` with the Tampermonkey banner.
 - `npm run build:copy-code`: builds the explicit Copy Code initializer from `src/copy-code.js` to `lib/copy-code.js`.
+- `npm run build:redirect`: builds `src/redirect.js` to `lib/redirect.js` for the independent sibling `/redirect/` warning page.
 - `npm run build:addstyle`, `build:confluence`, `build:list`: build other library-style entries with `webpack.config.lib.js`.
 - `npm run watch:confluence`: watches the `confluence` library entry during development.
 - `npm run build`: prints `Nothing to build!` and does not compile an entry. Select a relevant `build:<entry>` script instead.
@@ -29,6 +30,13 @@ For local dependency operations, use pnpm; run project scripts and inspect packa
 JavaScript uses ESLint Standard style with repository overrides: 2-space indentation, semicolons required, double quotes, `const`/`let` instead of `var`, and a 120-character warning limit. Use ES modules in `src/` and CommonJS in Webpack/config files. Name page folders by `ENTRY` because Webpack resolves `./src/pages/${ENTRY}/index.js`. Keep userscript selectors, storage keys, and metadata centralized.
 
 ## Testing Guidelines
+
+The Redirect entry is served at `127.0.0.1:4131/redirect.js` without a reload
+client. Its consuming HTML lives in `pages`, with Base CSS from `mazey.css`.
+The deferred entry initializes the four `redirect*` element IDs supplied by the
+page. Preserve exact Mazey `isValidUrl()` acceptance, one nonempty query value,
+text-only destination rendering, and navigation only through Continue. Refresh
+manually after changes; no backend integration belongs to this module.
 
 For source changes, run `npm test`, a no-fix ESLint check such as `./node_modules/.bin/eslint src --ext .js`, and the relevant build. `npm run lint:fix` writes source files. The WordPress regression test keeps the compatibility entry and committed artifact log-only while the legacy source remains outside active build paths. For `webhook`, run `npm run build:webhook` and manually verify metadata, selectors, storage behavior, and endpoint setup in Tampermonkey. For `link`, run `npm run dev` with the sibling HTML and CSS development servers, then check `127.0.0.1:4130/link/` in a browser. Name new tests with a `.test.js` suffix.
 

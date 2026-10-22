@@ -12,6 +12,7 @@ const entry = {
   link: [linkReloadClient, path.resolve(__dirname, "src/pages/link/index.js")],
   list: path.resolve(__dirname, "src/list.js"),
   obfuscator: path.resolve(__dirname, "src/pages/obfuscator/index.js"),
+  redirect: path.resolve(__dirname, "src/redirect.js"),
   webhook: path.resolve(__dirname, "src/webhook.js"),
   wordpress: path.resolve(__dirname, "src/wordpress.js"),
 };
