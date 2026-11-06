@@ -27,6 +27,7 @@ test("development server exposes every maintained source-backed library", () => 
     index: "src/pages/index/index.js",
     list: "src/list.js",
     obfuscator: "src/pages/obfuscator/index.js",
+    redirect: "src/redirect.js",
     webhook: "src/webhook.js",
     wordpress: "src/wordpress.js",
   };
@@ -38,6 +39,7 @@ test("development server exposes every maintained source-backed library", () => 
     "link",
     "list",
     "obfuscator",
+    "redirect",
     "webhook",
     "wordpress",
   ]);
